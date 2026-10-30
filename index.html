@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Table Tennis World Tour</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0d1b2a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      touch-action: none;
+    }
+    #canvas-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+      -ms-touch-action: none;
+      touch-action: none;
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: optimize-contrast;
+      -ms-interpolation-mode: nearest-neighbor;
+      -webkit-tap-highlight-color: transparent;
+      tap-highlight-color: transparent;
+    }
+  </style>
+
+  <!-- Clean Standalone Famobi & Analytics API Mock -->
+  <script>
+    // Stub visibility functions to prevent premature calls from VisibilityManager
+    function visibleResume() {}
+    function visiblePause() {}
+
+    window.famobi_gameID = "table-tennis-world-tour";
+
+    // Clean Standalone LeChuck API Mock
+    window.lechuck = {
+      stat: {
+        put: function(cb, key, val) {
+          if (typeof cb === "function") cb({ success: true });
+        },
+        get: function(cb, key) {
+          if (typeof cb === "function") cb({});
+        }
+      }
+    };
+    window.LeChuckAPI = function() {
+      return window.lechuck;
+    };
+
+    window.famobi = {
+      features: {
+        skip_title: false,
+        external_start: false,
+        external_mute: false,
+        external_pause: false,
+        lockPointer: false,
+        credits: false
+      },
+      hasFeature: function(feature) {
+        return !!this.features[feature];
+      },
+      getVolume: function() {
+        return 1.0;
+      },
+      setVolume: function(vol) {
+        if (typeof Howler !== "undefined") {
+          Howler.volume(vol);
+        }
+      },
+      requests: {},
+      onRequest: function(name, callback) {
+        this.requests[name] = callback;
+      },
+      triggerRequest: function(name) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        if (typeof this.requests[name] === "function") {
+          return this.requests[name].apply(this, args);
+        }
+      },
+      setPreloadProgress: function(percent) {},
+      gameReady: function() {},
+      getMoreGamesButtonImage: function() {
+        return "images/BrandingPlaceholderButton.png";
+      },
+      moreGamesLink: function() {},
+      localStorage: window.localStorage,
+      sessionStorage: window.sessionStorage,
+      pointerLockHelper: {
+        mousePos: { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+      }
+    };
+
+    window.famobi_analytics = {
+      SCREEN_HOME: "SCREEN_HOME",
+      SCREEN_CREDITS: "SCREEN_CREDITS",
+      SCREEN_LEVELINTRO: "SCREEN_LEVELINTRO",
+      SCREEN_LEVEL: "SCREEN_LEVEL",
+      SCREEN_PAUSE: "SCREEN_PAUSE",
+      SCREEN_LEVELRESULT: "SCREEN_LEVELRESULT",
+      EVENT_LEVELSTART: "EVENT_LEVELSTART",
+      EVENT_LEVELRESTART: "EVENT_LEVELRESTART",
+      EVENT_LEVELSUCCESS: "EVENT_LEVELSUCCESS",
+      EVENT_LEVELFAIL: "EVENT_LEVELFAIL",
+      trackScreen: function(screen) {
+        return Promise.resolve();
+      },
+      trackEvent: function(event, data) {
+        return Promise.resolve();
+      },
+      trackStats: function(stat, val) {
+        return Promise.resolve();
+      }
+    };
+  </script>
+</head>
+<body>
+  <div id="canvas-wrapper">
+    <canvas id="canvas" moz-opaque></canvas>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="js/TweenMax.min.js"></script>
+  <script src="js/Howler.min.js"></script>
+  <script src="js/VisibilityManager.js"></script>
+
+  <!-- Core Game Engine -->
+  <script src="js/app.js"></script>
+
+  <!-- Discord OAuth2 + WebRTC P2P Multiplayer Overlay & Bridge -->
+  <script type="module" src="/src/main.ts"></script>
+
+  <!-- Bootstrap Game -->
+  <script>
+    (function() {
+      // Audio unlock on user interaction (autoplay policy compliant)
+      function unlockAudio() {
+        if (typeof Howler !== "undefined" && Howler.ctx && Howler.ctx.state === "suspended") {
+          Howler.ctx.resume();
+        }
+        window.removeEventListener("touchstart", unlockAudio);
+        window.removeEventListener("touchend", unlockAudio);
+        window.removeEventListener("mousedown", unlockAudio);
+        window.removeEventListener("keydown", unlockAudio);
+      }
+      window.addEventListener("touchstart", unlockAudio, { passive: true });
+      window.addEventListener("touchend", unlockAudio, { passive: true });
+      window.addEventListener("mousedown", unlockAudio, { passive: true });
+      window.addEventListener("keydown", unlockAudio, { passive: true });
+
+      // Start game
+      if (document.readyState === "complete" || document.readyState === "interactive") {
+        extGameLoad();
+      } else {
+        window.addEventListener("DOMContentLoaded", extGameLoad);
+      }
+    })();
+  </script>
+</body>
+</html>
