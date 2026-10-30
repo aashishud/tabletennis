@@ -33,6 +33,7 @@ export type ControlMode = 'BOT_MODE' | 'NETWORK_MODE';
 
 export class MultiplayerBridge {
   public mode: ControlMode = 'BOT_MODE';
+  public peerPaused = false;
   private auth: DiscordAuthManager;
   private net: WebRTCRoomManager;
   private seq = 0;
@@ -64,6 +65,19 @@ export class MultiplayerBridge {
         this.setMode('NETWORK_MODE');
       } else if (status === 'disconnected' || status === 'error') {
         this.setMode('BOT_MODE');
+        this.peerPaused = false;
+      }
+    });
+
+    // Notify peer when this browser tab loses focus / minimizes so matches aren't ghosted
+    document.addEventListener('visibilitychange', () => {
+      const isHidden = document.hidden;
+      if (this.net.status === 'connected') {
+        this.net.sendReliable({
+          type: 'PEER_PAUSED',
+          paused: isHidden,
+          username: this.auth.getUser()?.displayName || this.auth.getUser()?.username,
+        });
       }
     });
   }
@@ -151,7 +165,7 @@ export class MultiplayerBridge {
     const maxY = userBat.maxY || canvas.height * 0.55;
     const normY = Math.max(0, Math.min(1, (userBat.y - maxY) / 260));
 
-    // Only transmit when the local player actually moves their mouse/paddle (or every 800ms keepalive)
+    // Only transmit when local player actually moves paddle (or every 800ms keepalive)
     const now = performance.now();
     const moved =
       Math.abs(normX - this.lastSentNormX) > 0.0008 ||
@@ -210,7 +224,7 @@ export class MultiplayerBridge {
 
     const now = performance.now();
     if (now - this.lastPointProcessedAt < 650) {
-      return true; // Debounce duplicate out triggers during the same rally end
+      return true; // Debounce duplicate out triggers during same rally end
     }
 
     if (this.net.role === 'host') {
@@ -241,7 +255,7 @@ export class MultiplayerBridge {
         ballShortState: ball.ballShortState,
       };
       this.net.sendReliable(missPacket);
-      // Pause ball locally until Host's authoritative POINT_RESULT arrives (usually < 10ms)
+      // Pause ball locally until Host's authoritative POINT_RESULT arrives
       ball.resetServe(ball.serveFlip ? 'user' : 'enemy');
       return true;
     }
@@ -281,6 +295,11 @@ export class MultiplayerBridge {
       return;
     }
 
+    if (packet.type === 'PEER_PAUSED') {
+      this.peerPaused = Boolean(packet.paused);
+      return;
+    }
+
     if (packet.type === 'PADDLE_MOVE') {
       const enemyBat = window.enemyBat;
       if (!enemyBat) return;
@@ -301,8 +320,7 @@ export class MultiplayerBridge {
         window.playSound('hit' + Math.floor(Math.random() * 6));
       }
 
-      // Transform normalized table coordinates from remote Player's bottom-side perspective
-      // to local `enemyBat` top-side perspective
+      // Reset state for new incoming trajectory
       ball.offTable = false;
       ball.offSide = false;
       ball.ballShortState = 0;
@@ -310,8 +328,9 @@ export class MultiplayerBridge {
       ball.lastHit = 'enemy';
       ball.tablePosX = -packet.tablePosX;
       ball.tablePosY = packet.isServe ? 0.2 : Math.max(0.05, Math.min(0.48, 1.0 - packet.tablePosY));
-      ball.height = Math.max(12, packet.height || 18);
-      ball.servingState = packet.isServe ? 0 : 2;
+      ball.height = Math.max(14, packet.height || 18);
+      // Crucial: Set servingState = 2 so receiving player's bat can hit ball after first bounce on their side!
+      ball.servingState = 2;
 
       const mirroredHitData = {
         x: -packet.hitData.x,
@@ -354,7 +373,7 @@ export class MultiplayerBridge {
       const ball = window.ball;
       if (!oGameData || !ball) return;
 
-      // Set exact synchronized scores (on Guest, userScore = guestScore, enemyScore = hostScore)
+      // Set exact synchronized scores
       oGameData.userScore = packet.guestScore - (packet.pointWinner === 'guest' ? 1 : 0);
       oGameData.enemyScore = packet.hostScore - (packet.pointWinner === 'host' ? 1 : 0);
 
@@ -372,7 +391,7 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Returns the opponent's PlayerIdentity (Remote Player in 1v1 lobby, or AI Bot in solo mode).
+   * Returns opponent's PlayerIdentity (Remote Player in 1v1 lobby, or AI Bot in solo mode).
    */
   public getOpponentIdentity(): PlayerIdentity {
     if (this.net.remotePlayer) {
@@ -382,7 +401,114 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Renders a floating Discord Avatar + Username badge directly above `userBat` during gameplay.
+   * Renders the retro arcade start marquee for "PONGPONG" directly onto the canvas.
+   */
+  public renderStartTitle(ctx: CanvasRenderingContext2D, panel: any) {
+    const canvas = window.canvas;
+    if (!canvas) return;
+    const posY = panel ? panel.posY || 0 : 0;
+    const cx = canvas.width / 2;
+    const cy = canvas.height * 0.28 - posY;
+
+    ctx.save();
+
+    // 1. Retro radial glow
+    const gradient = ctx.createRadialGradient(cx, cy, 20, cx, cy, canvas.width * 0.7);
+    gradient.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
+    gradient.addColorStop(0.5, 'rgba(121, 40, 202, 0.10)');
+    gradient.addColorStop(1, 'rgba(13, 27, 42, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.65);
+
+    // 2. Animated floating goofy pixel balls
+    const time = performance.now();
+    const float1 = Math.sin(time / 280) * 8;
+    const float2 = Math.cos(time / 300) * 8;
+
+    // Left goofy pixel ball (Cyan)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx - 192, cy - 25 + float1, 28, 28);
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillRect(cx - 190, cy - 23 + float1, 24, 24);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx - 186, cy - 19 + float1, 4, 8); // eyes
+    ctx.fillRect(cx - 176, cy - 19 + float1, 4, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - 186, cy - 19 + float1, 2, 4);
+
+    // Right goofy pixel ball (Pink)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx + 164, cy - 25 + float2, 28, 28);
+    ctx.fillStyle = '#ff007f';
+    ctx.fillRect(cx + 166, cy - 23 + float2, 24, 24);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx + 172, cy - 19 + float2, 4, 8); // eyes
+    ctx.fillRect(cx + 182, cy - 19 + float2, 4, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx + 172, cy - 19 + float2, 2, 4);
+
+    // 3. Top Retro Badge: "100% P2P ARCADE"
+    ctx.font = '700 11px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const badgeW = 230;
+    const badgeH = 26;
+    const badgeY = cy - 65;
+
+    // Neo-brutalist badge shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx - badgeW / 2 + 4, badgeY - badgeH / 2 + 4, badgeW, badgeH);
+    // Neo-brutalist badge body
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillRect(cx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeRect(cx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH);
+    // Badge text
+    ctx.fillStyle = '#000000';
+    ctx.fillText('★ 1V1 RETRO ARCADE ★', cx, badgeY + 1);
+
+    // 4. Giant 3D Chunky Marquee: "PONGPONG"
+    const titleText = 'PONGPONG';
+    ctx.font = '900 48px "Press Start 2P", monospace';
+
+    // Layered 3D Extrusion Shadows
+    const shadowSteps = 6;
+    for (let s = shadowSteps; s >= 1; s--) {
+      ctx.fillStyle = s > 3 ? '#000000' : '#ff007f';
+      ctx.fillText(titleText, cx + s * 2, cy + s * 2);
+    }
+    // Main Yellow Face
+    ctx.fillStyle = '#ffe600';
+    ctx.fillText(titleText, cx, cy);
+    // Crisp White Highlight Stroke
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(titleText, cx, cy);
+
+    // 5. Goofy Subtitle Banner
+    const subText = 'THE GOOFIEST 1V1 PADDLE BRAWL';
+    ctx.font = '700 10px "Press Start 2P", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.fillText(subText, cx + 2, cy + 42);
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillText(subText, cx, cy + 40);
+
+    // 6. Blinking Arcade Prompt
+    const blink = Math.floor(time / 550) % 2 === 0;
+    if (blink) {
+      ctx.font = '700 11px "Press Start 2P", monospace';
+      ctx.fillStyle = '#000000';
+      ctx.fillText('► PRESS PLAY OR OPEN 1V1 LOBBY ◄', cx + 2, cy + 92);
+      ctx.fillStyle = '#ffe600';
+      ctx.fillText('► PRESS PLAY OR OPEN 1V1 LOBBY ◄', cx, cy + 90);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders floating Discord Avatar + Username badge directly above `userBat` during gameplay.
    */
   public renderUserIdentity(ctx: CanvasRenderingContext2D, bat: any) {
     if (window.firstRun) return;
@@ -391,11 +517,11 @@ export class MultiplayerBridge {
 
     const badgeX = bat.x;
     const badgeY = bat.y - 88 * bat.scale;
-    this.drawFloatingPlayerTag(ctx, badgeX, badgeY, user, '#00f2fe', Math.max(0.78, Math.min(1.05, bat.scale)));
+    this.drawFloatingPlayerTag(ctx, badgeX, badgeY, user, '#00f0ff', Math.max(0.78, Math.min(1.05, bat.scale)));
   }
 
   /**
-   * Renders a floating Discord Avatar + Username badge directly above `enemyBat` during gameplay.
+   * Renders floating Discord Avatar + Username badge directly above `enemyBat` during gameplay.
    */
   public renderEnemyIdentity(ctx: CanvasRenderingContext2D, bat: any) {
     if (window.firstRun) return;
@@ -409,14 +535,14 @@ export class MultiplayerBridge {
     const badgeY = bat.y - 54 * (bat.scale || 0.5);
 
     if (isNetwork && this.net.remotePlayer) {
-      this.drawFloatingPlayerTag(ctx, badgeX, badgeY, this.net.remotePlayer, '#ff477e', 0.82);
+      this.drawFloatingPlayerTag(ctx, badgeX, badgeY, this.net.remotePlayer, '#ff007f', 0.82);
     } else {
       this.drawBotTag(ctx, badgeX, badgeY);
     }
   }
 
   /**
-   * Directly replaces the top country flags in `case "game"` with User PFP 1 vs User PFP 2.
+   * Replaces top country flags in `case "game"` with retro arcade chips: 1P vs 2P / BOT.
    */
   public renderTopScoreboardAvatars(ctx: CanvasRenderingContext2D, panel: any) {
     const canvas = window.canvas;
@@ -428,30 +554,32 @@ export class MultiplayerBridge {
     const posY = panel.posY || 0;
     const centerY = 30 - posY;
 
-    // Left slot (User PFP 1 - replaces left country flag next to left score card)
+    // Left slot (1P)
     this.drawTopPfpSlot(
       ctx,
-      canvas.width / 2 - 54,
+      canvas.width / 2 - 58,
       centerY,
       localUser,
-      '#00f2fe',
+      '#00f0ff',
+      '1P',
       'left'
     );
 
-    // Right slot (User PFP 2 - replaces right country flag next to right score card)
+    // Right slot (2P / BOT)
     this.drawTopPfpSlot(
       ctx,
-      canvas.width / 2 + 54,
+      canvas.width / 2 + 58,
       centerY,
       opponent,
-      isMultiplayer ? '#ff477e' : '#94a3b8',
+      isMultiplayer ? '#ff007f' : '#ff9900',
+      isMultiplayer ? '2P' : 'BOT',
       'right'
     );
   }
 
   /**
-   * Directly replaces the large country flags on the `gameIntro` (VS screen)
-   * and `gameComplete` (Match Results screen) with User PFP 1 vs User PFP 2 cards.
+   * Replaces country flags on `gameIntro` (VS screen) & `gameComplete` (Match Over screen)
+   * with retro arcade cards and marquee headers.
    */
   public renderIntroOrCompleteAvatars(
     ctx: CanvasRenderingContext2D,
@@ -465,14 +593,15 @@ export class MultiplayerBridge {
     const opponent = this.getOpponentIdentity();
     const isMultiplayer = Boolean(this.net.remotePlayer);
     const posY = panel.posY || 0;
+    const cx = canvas.width / 2;
 
     const centerY =
       screenType === 'gameIntro'
         ? canvas.height * 0.6 - posY / 4
         : canvas.height * 0.55 - 110 - posY / 2;
 
-    const leftX = canvas.width / 2 - 122;
-    const rightX = canvas.width / 2 + 122;
+    const leftX = cx - 128;
+    const rightX = cx + 128;
 
     const userWon =
       screenType === 'gameComplete' &&
@@ -483,31 +612,117 @@ export class MultiplayerBridge {
       window.oGameData &&
       window.oGameData.enemyScore > window.oGameData.userScore;
 
+    // Center VS / VICTORY Marquee
+    if (screenType === 'gameIntro') {
+      ctx.save();
+      const vsY = centerY;
+      // Chunky VS Box
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(cx - 28, vsY - 18, 56, 36);
+      ctx.fillStyle = '#ffe600';
+      ctx.fillRect(cx - 30, vsY - 20, 60, 40);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeRect(cx - 30, vsY - 20, 60, 40);
+
+      ctx.font = '900 16px "Press Start 2P", monospace';
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('VS', cx, vsY + 1);
+      ctx.restore();
+    } else {
+      // Game Complete Header
+      ctx.save();
+      const headerY = canvas.height * 0.2 - posY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const bannerText = userWon ? '★ VICTORY! ★' : enemyWon ? '★ DEFEAT! ★' : '★ DRAW! ★';
+      ctx.font = '900 24px "Press Start 2P", monospace';
+
+      // 3D shadow
+      ctx.fillStyle = '#000000';
+      ctx.fillText(bannerText, cx + 4, headerY + 4);
+      ctx.fillStyle = userWon ? '#ff007f' : '#334155';
+      ctx.fillText(bannerText, cx + 2, headerY + 2);
+      ctx.fillStyle = userWon ? '#ffe600' : '#ff477e';
+      ctx.fillText(bannerText, cx, headerY);
+
+      // Subtitle
+      ctx.font = '700 11px "Press Start 2P", monospace';
+      const sub = userWon
+        ? 'PONGPONG CHAMPION!'
+        : enemyWon
+        ? 'REMATCH TO REVENGE!'
+        : 'TIED BRAWL!';
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillText(sub, cx, headerY + 36);
+      ctx.restore();
+    }
+
+    // 1P Card
     this.drawLargeMatchPfpCard(
       ctx,
       leftX,
       centerY,
       localUser,
-      userWon ? '#facc15' : '#00f2fe',
+      userWon ? '#ffe600' : '#00f0ff',
+      '1P',
       userWon
     );
 
+    // 2P / BOT Card
     this.drawLargeMatchPfpCard(
       ctx,
       rightX,
       centerY,
       opponent,
-      enemyWon ? '#facc15' : isMultiplayer ? '#ff477e' : '#94a3b8',
+      enemyWon ? '#ffe600' : isMultiplayer ? '#ff007f' : '#ff9900',
+      isMultiplayer ? '2P' : 'BOT',
       enemyWon
     );
   }
 
   /**
-   * Legacy hook called at the end of `Panel.prototype.render`.
+   * Renders persistent overlays such as the AFK / Tab Switch Warning.
    */
-  public renderPanelOverlay(_ctx: CanvasRenderingContext2D, _panel: any) {
-    // Flag slots are now directly replaced inline via renderTopScoreboardAvatars
-    // and renderIntroOrCompleteAvatars.
+  public renderPanelOverlay(ctx: CanvasRenderingContext2D, _panel: any) {
+    if (this.peerPaused && this.net.status === 'connected') {
+      const canvas = window.canvas;
+      if (!canvas) return;
+
+      ctx.save();
+      const cx = canvas.width / 2;
+      const cy = canvas.height * 0.44;
+
+      const w = Math.min(canvas.width - 40, 420);
+      const h = 76;
+
+      // Hard 3D Drop Shadow
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(cx - w / 2 + 5, cy - h / 2 + 5, w, h);
+
+      // Box body (Flashing arcade yellow/pink)
+      const flash = Math.floor(performance.now() / 400) % 2 === 0;
+      ctx.fillStyle = flash ? '#ffe600' : '#ff007f';
+      ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
+
+      // Text lines
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '900 12px "Press Start 2P", monospace';
+      ctx.fillStyle = '#000000';
+      ctx.fillText('⚠️ OPPONENT TABBED OUT / AFK ⚠️', cx, cy - 14);
+
+      ctx.font = '700 9px "Press Start 2P", monospace';
+      ctx.fillText('WAITING FOR 2P TO RETURN TO TAB...', cx, cy + 12);
+
+      ctx.restore();
+    }
   }
 
   private drawFloatingPlayerTag(
@@ -515,66 +730,53 @@ export class MultiplayerBridge {
     x: number,
     y: number,
     player: PlayerIdentity,
-    ringColor: string,
+    accentColor: string,
     scale: number
   ) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
 
-    const label = player.displayName || player.username;
-    ctx.font = '700 13px Inter, system-ui, -apple-system, sans-serif';
+    const label = (player.displayName || player.username).toUpperCase().slice(0, 12);
+    ctx.font = '700 10px "Press Start 2P", monospace';
     const textWidth = ctx.measureText(label).width;
-    const avatarSize = 24;
-    const padX = 10;
-    const pillWidth = avatarSize + 8 + textWidth + padX * 2;
-    const pillHeight = 32;
+    const avatarSize = 22;
+    const padX = 8;
+    const pillWidth = avatarSize + 6 + textWidth + padX * 2;
+    const pillHeight = 28;
+
+    // Hard 3D Shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(-pillWidth / 2 + 3, -pillHeight / 2 + 3, pillWidth, pillHeight);
 
     // Pill background
-    ctx.fillStyle = 'rgba(13, 27, 42, 0.84)';
-    ctx.strokeStyle = ringColor;
-    ctx.lineWidth = 1.8;
-    this.roundRect(ctx, -pillWidth / 2, -pillHeight / 2, pillWidth, pillHeight, 16);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillStyle = '#150d2a';
+    ctx.fillRect(-pillWidth / 2, -pillHeight / 2, pillWidth, pillHeight);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = accentColor;
+    ctx.strokeRect(-pillWidth / 2, -pillHeight / 2, pillWidth, pillHeight);
 
-    // Little pointer triangle pointing to paddle
-    ctx.beginPath();
-    ctx.moveTo(-5, pillHeight / 2);
-    ctx.lineTo(5, pillHeight / 2);
-    ctx.lineTo(0, pillHeight / 2 + 5);
-    ctx.closePath();
-    ctx.fillStyle = ringColor;
-    ctx.fill();
-
-    // Circular Avatar
+    // Avatar square
     const avatarCenterX = -pillWidth / 2 + padX + avatarSize / 2;
     const img = this.auth.preloadAvatar(player.avatarUrl);
     ctx.save();
     ctx.beginPath();
-    ctx.arc(avatarCenterX, 0, avatarSize / 2, 0, Math.PI * 2);
+    ctx.rect(avatarCenterX - avatarSize / 2, -avatarSize / 2, avatarSize, avatarSize);
     ctx.closePath();
     ctx.clip();
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, avatarCenterX - avatarSize / 2, -avatarSize / 2, avatarSize, avatarSize);
     } else {
-      ctx.fillStyle = player.accentColor || '#5865F2';
+      ctx.fillStyle = player.accentColor || '#ff007f';
       ctx.fillRect(avatarCenterX - avatarSize / 2, -avatarSize / 2, avatarSize, avatarSize);
     }
     ctx.restore();
-
-    // Avatar ring
-    ctx.beginPath();
-    ctx.arc(avatarCenterX, 0, avatarSize / 2, 0, Math.PI * 2);
-    ctx.strokeStyle = ringColor;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
 
     // Username text
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, avatarCenterX + avatarSize / 2 + 7, 1);
+    ctx.fillText(label, avatarCenterX + avatarSize / 2 + 6, 1);
 
     ctx.restore();
   }
@@ -582,17 +784,21 @@ export class MultiplayerBridge {
   private drawBotTag(ctx: CanvasRenderingContext2D, x: number, y: number) {
     ctx.save();
     ctx.translate(x, y);
-    ctx.font = '700 11px Inter, system-ui, sans-serif';
+    ctx.font = '700 9px "Press Start 2P", monospace';
     const label = 'AI BOT';
     const w = ctx.measureText(label).width + 16;
     const h = 22;
-    ctx.fillStyle = 'rgba(13, 27, 42, 0.72)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 1.2;
-    this.roundRect(ctx, -w / 2, -h / 2, w, h, 11);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#cbd5e1';
+
+    // 3D Shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(-w / 2 + 3, -h / 2 + 3, w, h);
+    ctx.fillStyle = '#150d2a';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ff9900';
+    ctx.strokeRect(-w / 2, -h / 2, w, h);
+
+    ctx.fillStyle = '#ff9900';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, 0, 1);
@@ -604,62 +810,76 @@ export class MultiplayerBridge {
     edgeX: number,
     centerY: number,
     player: PlayerIdentity,
-    ringColor: string,
+    chipColor: string,
+    roleTag: '1P' | '2P' | 'BOT',
     side: 'left' | 'right'
   ) {
     ctx.save();
-    const label = player.displayName || player.username;
-    ctx.font = '700 12px Inter, system-ui, -apple-system, sans-serif';
-    const textW = Math.min(ctx.measureText(label).width, 100);
-    const avatarSize = 36;
-    const r = avatarSize / 2;
-    const pillH = 44;
-    const pillW = avatarSize + textW + 22;
+    const label = (player.displayName || player.username).toUpperCase().slice(0, 8);
+    ctx.font = '700 9px "Press Start 2P", monospace';
+    const textW = Math.min(ctx.measureText(label).width, 80);
+    const avatarSize = 30;
+    const pillH = 38;
+    const pillW = avatarSize + textW + 36;
 
     const pillX = side === 'left' ? edgeX - pillW : edgeX;
     const pillY = centerY - pillH / 2;
 
-    // Pill plate background
-    ctx.fillStyle = 'rgba(13, 27, 42, 0.88)';
-    ctx.strokeStyle = ringColor;
-    ctx.lineWidth = 2;
-    this.roundRect(ctx, pillX, pillY, pillW, pillH, 12);
-    ctx.fill();
-    ctx.stroke();
+    // Hard 3D Drop Shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(pillX + 3, pillY + 3, pillW, pillH);
 
-    const avatarCx =
-      side === 'left' ? edgeX - 5 - r : edgeX + 5 + r;
+    // Pill chassis
+    ctx.fillStyle = '#150d2a';
+    ctx.fillRect(pillX, pillY, pillW, pillH);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = chipColor;
+    ctx.strokeRect(pillX, pillY, pillW, pillH);
+
+    // Role Tag (1P / 2P / BOT)
+    const tagW = 20;
+    const tagH = 14;
+    const tagX = side === 'left' ? pillX + 4 : pillX + pillW - tagW - 4;
+    const tagY = pillY + 4;
+    ctx.fillStyle = chipColor;
+    ctx.fillRect(tagX, tagY, tagW, tagH);
+    ctx.font = '900 7px "Press Start 2P", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(roleTag, tagX + tagW / 2, tagY + tagH / 2 + 1);
+
+    // Avatar
+    const avatarCx = side === 'left' ? edgeX - 6 - avatarSize / 2 : edgeX + 6 + avatarSize / 2;
     const img = this.auth.preloadAvatar(player.avatarUrl);
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(avatarCx, centerY, r, 0, Math.PI * 2);
+    ctx.rect(avatarCx - avatarSize / 2, centerY - avatarSize / 2, avatarSize, avatarSize);
     ctx.closePath();
     ctx.clip();
     if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, avatarCx - r, centerY - r, avatarSize, avatarSize);
+      ctx.drawImage(img, avatarCx - avatarSize / 2, centerY - avatarSize / 2, avatarSize, avatarSize);
     } else {
-      ctx.fillStyle = player.accentColor || '#5865F2';
-      ctx.fillRect(avatarCx - r, centerY - r, avatarSize, avatarSize);
+      ctx.fillStyle = player.accentColor || chipColor;
+      ctx.fillRect(avatarCx - avatarSize / 2, centerY - avatarSize / 2, avatarSize, avatarSize);
     }
     ctx.restore();
 
-    // Avatar ring
-    ctx.beginPath();
-    ctx.arc(avatarCx, centerY, r, 0, Math.PI * 2);
-    ctx.strokeStyle = ringColor;
-    ctx.lineWidth = 1.8;
-    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeRect(avatarCx - avatarSize / 2, centerY - avatarSize / 2, avatarSize, avatarSize);
 
     // Username
+    ctx.font = '700 8px "Press Start 2P", monospace';
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'middle';
     if (side === 'left') {
       ctx.textAlign = 'right';
-      ctx.fillText(label, avatarCx - r - 7, centerY + 1, 100);
+      ctx.fillText(label, avatarCx - avatarSize / 2 - 6, centerY + 1, 80);
     } else {
       ctx.textAlign = 'left';
-      ctx.fillText(label, avatarCx + r + 7, centerY + 1, 100);
+      ctx.fillText(label, avatarCx + avatarSize / 2 + 6, centerY + 1, 80);
     }
 
     ctx.restore();
@@ -670,68 +890,72 @@ export class MultiplayerBridge {
     centerX: number,
     centerY: number,
     player: PlayerIdentity,
-    ringColor: string,
+    accentColor: string,
+    roleTag: '1P' | '2P' | 'BOT',
     isWinner = false
   ) {
     ctx.save();
-    const avatarSize = 78;
-    const r = avatarSize / 2;
-    const label = player.displayName || player.username;
+    const cardW = 106;
+    const cardH = 126;
+    const avatarSize = 72;
+    const label = (player.displayName || player.username).toUpperCase().slice(0, 10);
 
-    // Outer glow backdrop
-    ctx.fillStyle = 'rgba(13, 27, 42, 0.9)';
-    ctx.strokeStyle = ringColor;
-    ctx.lineWidth = isWinner ? 3.5 : 2.5;
-    this.roundRect(ctx, centerX - 50, centerY - 52, 100, 114, 18);
-    ctx.fill();
-    ctx.stroke();
+    // Hard 3D Drop Shadow
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(centerX - cardW / 2 + 5, centerY - cardH / 2 + 5, cardW, cardH);
 
-    const avatarCy = centerY - 8;
+    // Card background
+    ctx.fillStyle = '#150d2a';
+    ctx.fillRect(centerX - cardW / 2, centerY - cardH / 2, cardW, cardH);
+    ctx.lineWidth = isWinner ? 4 : 3;
+    ctx.strokeStyle = accentColor;
+    ctx.strokeRect(centerX - cardW / 2, centerY - cardH / 2, cardW, cardH);
+
+    // Role Tag chip at top
+    const tagW = 34;
+    const tagH = 16;
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(centerX - tagW / 2, centerY - cardH / 2 + 4, tagW, tagH);
+    ctx.font = '900 8px "Press Start 2P", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(roleTag, centerX, centerY - cardH / 2 + 12);
+
+    // Avatar square
+    const avatarCy = centerY - 2;
     const img = this.auth.preloadAvatar(player.avatarUrl);
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(centerX, avatarCy, r, 0, Math.PI * 2);
+    ctx.rect(centerX - avatarSize / 2, avatarCy - avatarSize / 2, avatarSize, avatarSize);
     ctx.closePath();
     ctx.clip();
     if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, centerX - r, avatarCy - r, avatarSize, avatarSize);
+      ctx.drawImage(img, centerX - avatarSize / 2, avatarCy - avatarSize / 2, avatarSize, avatarSize);
     } else {
-      ctx.fillStyle = player.accentColor || '#5865F2';
-      ctx.fillRect(centerX - r, avatarCy - r, avatarSize, avatarSize);
+      ctx.fillStyle = player.accentColor || accentColor;
+      ctx.fillRect(centerX - avatarSize / 2, avatarCy - avatarSize / 2, avatarSize, avatarSize);
     }
     ctx.restore();
 
-    ctx.beginPath();
-    ctx.arc(centerX, avatarCy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = ringColor;
     ctx.lineWidth = 2.5;
-    ctx.stroke();
+    ctx.strokeStyle = '#000000';
+    ctx.strokeRect(centerX - avatarSize / 2, avatarCy - avatarSize / 2, avatarSize, avatarSize);
 
-    // Username banner below avatar
-    ctx.font = '800 13px Inter, system-ui, -apple-system, sans-serif';
-    ctx.fillStyle = isWinner ? '#facc15' : '#ffffff';
+    // Winner Crown icon
+    if (isWinner) {
+      ctx.font = '16px serif';
+      ctx.fillText('👑', centerX, avatarCy - avatarSize / 2 - 4);
+    }
+
+    // Username
+    ctx.font = '700 8px "Press Start 2P", monospace';
+    ctx.fillStyle = isWinner ? '#ffe600' : '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, centerX, centerY + 44, 90);
+    ctx.fillText(label, centerX, centerY + cardH / 2 - 14, 95);
 
     ctx.restore();
-  }
-
-  private roundRect(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    r: number
-  ) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
   }
 }

@@ -1,14 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800;900&family=Press+Start+2P&display=swap');
+
 :root {
-  --ttwt-bg-glass: rgba(13, 22, 36, 0.88);
-  --ttwt-bg-card: rgba(20, 32, 52, 0.92);
-  --ttwt-border: rgba(255, 255, 255, 0.14);
-  --ttwt-discord: #5865f2;
-  --ttwt-discord-hover: #4752c4;
-  --ttwt-cyan: #00f2fe;
-  --ttwt-emerald: #23a55a;
-  --ttwt-rose: #ff477e;
-  --ttwt-text: #f8fafc;
-  --ttwt-muted: #94a3b8;
+  --pp-bg-cabinet: #150d2a;
+  --pp-bg-card: #20133e;
+  --pp-bg-dark: #0c061a;
+  --pp-border: #000000;
+  --pp-yellow: #ffe600;
+  --pp-pink: #ff007f;
+  --pp-cyan: #00f0ff;
+  --pp-green: #00ff66;
+  --pp-orange: #ff6b00;
+  --pp-discord: #5865f2;
+  --pp-text: #ffffff;
+  --pp-text-muted: #b8a9db;
+  --pp-shadow: 4px 4px 0px #000000;
+  --pp-shadow-sm: 2px 2px 0px #000000;
+  --pp-shadow-lg: 6px 6px 0px #000000;
 }
 
 #ttwt-ui-root {
@@ -16,261 +23,333 @@
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: var(--ttwt-text);
+  font-family: 'Fredoka', system-ui, -apple-system, sans-serif;
+  color: var(--pp-text);
 }
 
-/* Top-Left Floating HUD Bar */
+/* Subtle CRT Scanlines Overlay */
+#ttwt-ui-root::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 26, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+  background-size: 100% 4px;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* 🕹️ Top-Left Retro Arcade Player HUD */
 .ttwt-hud-bar {
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 14px;
+  left: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px 6px 8px;
-  background: var(--ttwt-bg-glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--ttwt-border);
-  border-radius: 999px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: 8px 14px 8px 10px;
+  background: var(--pp-bg-cabinet);
+  border: 3px solid var(--pp-border);
+  border-radius: 14px;
+  box-shadow: var(--pp-shadow);
   pointer-events: auto;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ttwt-hud-bar:hover {
-  border-color: rgba(0, 242, 254, 0.45);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--pp-shadow-lg);
 }
 
 .ttwt-hud-user {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
 }
 
+.ttwt-player-badge {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 3px 6px;
+  background: var(--pp-yellow);
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 6px;
+  box-shadow: var(--pp-shadow-sm);
+  font-weight: 800;
+}
+
 .ttwt-hud-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   object-fit: cover;
-  border: 2px solid var(--ttwt-cyan);
+  border: 3px solid var(--pp-cyan);
   background: #1e1f22;
+  box-shadow: var(--pp-shadow-sm);
 }
 
 .ttwt-hud-meta {
   display: flex;
   flex-direction: column;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .ttwt-hud-name {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 900;
   color: #fff;
+  letter-spacing: 0.02em;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  text-shadow: 1px 1px 0px #000;
 }
 
 .ttwt-hud-sub {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ttwt-muted);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pp-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
+/* Retro Arcade Status Badge */
 .ttwt-badge-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  border: 2px solid var(--pp-border);
+  box-shadow: var(--pp-shadow-sm);
 }
 
 .ttwt-badge-bot {
-  background: rgba(148, 163, 184, 0.16);
-  color: #cbd5e1;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: #2a2046;
+  color: #e2d9f3;
 }
 
 .ttwt-badge-p2p {
-  background: rgba(35, 165, 90, 0.22);
-  color: #4ade80;
-  border: 1px solid rgba(74, 222, 128, 0.45);
+  background: var(--pp-green);
+  color: #000;
+  font-weight: 900;
 }
 
 .ttwt-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
   background: currentColor;
+  border: 1px solid #000;
 }
 
 .ttwt-dot-pulse {
-  animation: ttwtPulse 1.4s infinite ease-in-out;
+  animation: retroBlink 0.8s infinite steps(2, start);
 }
 
-@keyframes ttwtPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.35); opacity: 0.55; }
+@keyframes retroBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
 }
 
+/* 🕹️ Retro Pressable Arcade Buttons */
 .ttwt-btn {
   pointer-events: auto;
-  border: none;
+  border: 3px solid var(--pp-border);
   outline: none;
   cursor: pointer;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 12px;
-  border-radius: 999px;
-  padding: 7px 13px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  border-radius: 10px;
+  padding: 9px 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  transition: all 0.16s ease;
-  color: #fff;
+  gap: 8px;
+  box-shadow: var(--pp-shadow);
+  transition: all 0.08s ease;
+  color: #000;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ttwt-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px #000000;
 }
 
 .ttwt-btn:active {
-  transform: scale(0.97);
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0px #000000;
 }
 
-.ttwt-btn-discord {
-  background: var(--ttwt-discord);
-  box-shadow: 0 4px 14px rgba(88, 101, 242, 0.4);
+.ttwt-btn-arcade {
+  background: var(--pp-yellow);
 }
 
-.ttwt-btn-discord:hover {
-  background: var(--ttwt-discord-hover);
+.ttwt-btn-pink {
+  background: var(--pp-pink);
+  color: #fff;
+  text-shadow: 1px 1px 0px #000;
 }
 
 .ttwt-btn-cyan {
-  background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
-  box-shadow: 0 4px 14px rgba(0, 198, 255, 0.35);
-}
-
-.ttwt-btn-cyan:hover {
-  filter: brightness(1.1);
+  background: var(--pp-cyan);
 }
 
 .ttwt-btn-emerald {
-  background: linear-gradient(135deg, #23a55a 0%, #15803d 100%);
-  box-shadow: 0 4px 14px rgba(35, 165, 90, 0.4);
+  background: var(--pp-green);
 }
 
-.ttwt-btn-emerald:hover {
-  filter: brightness(1.1);
+.ttwt-btn-discord {
+  background: var(--pp-discord);
+  color: #fff;
+  text-shadow: 1px 1px 0px #000;
 }
 
 .ttwt-btn-ghost {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #e2e8f0;
+  background: #34225c;
+  color: #fff;
+  border-color: #000;
+  font-family: 'Fredoka', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .ttwt-btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: #46307a;
 }
 
-/* Modal Backdrop & Card */
+/* 👾 Retro Arcade Cabinet Modal */
 .ttwt-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(6, 11, 20, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10, 5, 20, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
   pointer-events: auto;
   opacity: 1;
-  transition: opacity 0.2s ease;
+  visibility: visible;
+  transition: opacity 0.18s ease;
 }
 
 .ttwt-modal-backdrop.ttwt-hidden {
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 
 .ttwt-modal-card {
   width: 100%;
-  max-width: 520px;
-  background: linear-gradient(165deg, rgba(19, 30, 49, 0.97) 0%, rgba(11, 19, 32, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--pp-bg-cabinet);
+  border: 4px solid var(--pp-border);
   border-radius: 20px;
   padding: 22px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+  box-shadow: 8px 8px 0px #000000;
   display: flex;
   flex-direction: column;
   gap: 18px;
+  position: relative;
+  background-image: radial-gradient(circle at 10% 10%, rgba(255, 0, 127, 0.12) 0%, transparent 40%),
+                    radial-gradient(circle at 90% 90%, rgba(0, 240, 255, 0.12) 0%, transparent 40%);
 }
 
 .ttwt-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border-bottom: 3px dashed #3a2766;
+  padding-bottom: 14px;
 }
 
 .ttwt-modal-title {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 0;
+  gap: 10px;
+}
+
+.ttwt-logo-main {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  color: var(--pp-yellow);
+  text-shadow: 2px 2px 0px #ff007f, 4px 4px 0px #000000;
+  letter-spacing: -0.05em;
+  transform: rotate(-2deg);
+  display: inline-block;
+}
+
+.ttwt-logo-sub {
+  font-family: 'Fredoka', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pp-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .ttwt-close-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #cbd5e1;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 16px;
+  background: var(--pp-pink);
+  border: 3px solid #000;
+  color: #fff;
+  border-radius: 10px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: var(--pp-shadow-sm);
+  transition: all 0.08s ease;
 }
 
 .ttwt-close-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px #000;
 }
 
+.ttwt-close-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #000;
+}
+
+/* Sections */
 .ttwt-section {
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: var(--pp-bg-card);
+  border: 3px solid var(--pp-border);
   border-radius: 14px;
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: var(--pp-shadow-sm);
 }
 
 .ttwt-section-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ttwt-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--pp-yellow);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
+/* Profile Row */
 .ttwt-profile-row {
   display: flex;
   align-items: center;
@@ -288,11 +367,14 @@
 .ttwt-profile-avatar-lg {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
-  border: 2.5px solid var(--ttwt-cyan);
+  border-radius: 12px;
   object-fit: cover;
+  border: 3px solid var(--pp-yellow);
+  box-shadow: var(--pp-shadow-sm);
+  background: #1e1f22;
 }
 
+/* Mock Identity Chips */
 .ttwt-mock-toggles {
   display: flex;
   gap: 8px;
@@ -300,116 +382,141 @@
 }
 
 .ttwt-mock-chip {
-  padding: 6px 11px;
-  border-radius: 10px;
-  font-size: 11.5px;
+  background: #2b1a50;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: 'Fredoka', sans-serif;
+  font-size: 12px;
   font-weight: 700;
+  color: #fff;
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
-  transition: all 0.15s ease;
+  box-shadow: var(--pp-shadow-sm);
+  transition: all 0.08s ease;
 }
 
 .ttwt-mock-chip:hover {
-  background: rgba(255, 255, 255, 0.13);
+  background: #3d266e;
 }
 
 .ttwt-mock-chip.active {
-  background: rgba(0, 242, 254, 0.16);
-  border-color: var(--ttwt-cyan);
-  color: #fff;
+  background: var(--pp-cyan);
+  color: #000;
+  font-weight: 900;
 }
 
+.ttwt-mock-chip:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #000;
+}
+
+/* Room Code Banner */
+.ttwt-room-code-banner {
+  background: #110825;
+  border: 3px solid var(--pp-pink);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: var(--pp-shadow-sm);
+}
+
+.ttwt-room-code-text {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 22px;
+  color: var(--pp-yellow);
+  letter-spacing: 0.16em;
+  text-shadow: 2px 2px 0px #000;
+}
+
+/* 1v1 Lobby Action Grid */
 .ttwt-lobby-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
-@media (max-width: 500px) {
+@media (max-width: 520px) {
   .ttwt-lobby-grid {
     grid-template-columns: 1fr;
   }
 }
 
 .ttwt-lobby-box {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 12px;
+  background: #170d31;
+  border: 3px solid var(--pp-border);
+  border-radius: 14px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: var(--pp-shadow-sm);
 }
 
 .ttwt-input {
-  width: 100%;
-  background: rgba(9, 15, 26, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #fff;
-  padding: 8px 11px;
-  border-radius: 9px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  background: #0d061e;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: var(--pp-yellow);
   outline: none;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  box-shadow: inset 2px 2px 0px #000;
 }
 
 .ttwt-input:focus {
-  border-color: var(--ttwt-cyan);
+  border-color: var(--pp-cyan);
 }
 
-.ttwt-room-code-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(88, 101, 242, 0.14);
-  border: 1px dashed rgba(88, 101, 242, 0.6);
-  border-radius: 12px;
-  padding: 10px 14px;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.ttwt-room-code-text {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  color: var(--ttwt-cyan);
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
-
+/* VS Banner */
 .ttwt-vs-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(90deg, rgba(0, 242, 254, 0.1) 0%, rgba(255, 71, 126, 0.1) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: 12px 16px;
+  background: #0f0721;
+  border: 3px solid var(--pp-yellow);
+  border-radius: 14px;
+  padding: 12px 18px;
+  box-shadow: var(--pp-shadow);
 }
 
 .ttwt-vs-player {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
 }
 
 .ttwt-vs-player img {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   object-fit: cover;
+  box-shadow: var(--pp-shadow-sm);
 }
 
+.ttwt-vs-middle {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 20px;
+  color: var(--pp-pink);
+  text-shadow: 2px 2px 0px #ffe600, 3px 3px 0px #000;
+  transform: rotate(-6deg);
+}
+
+/* Status Line */
 .ttwt-status-line {
-  font-size: 12px;
-  color: #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pp-text-muted);
+  border-top: 2px dashed #301d54;
+  padding-top: 10px;
 }

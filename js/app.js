@@ -1019,32 +1019,15 @@ var Elements;
                     ctx.drawImage(this.oSplashLogoImgData.img, canvas.width / 2 - this.oSplashLogoImgData.img.width / 2, canvas.height / 2 - this.oSplashLogoImgData.img.height / 2 - this.posY);
                     break;
                 case "start":
+                    if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderStartTitle === "function") {
+                        window.TTWTMultiplayer.renderStartTitle(ctx, this);
+                        break;
+                    }
                     var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].x;
                     var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].y;
                     var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].width;
                     var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].height;
                     ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, 0, canvas.height * .57 - bHeight / 2 + this.posY / 2, canvas.width, bHeight);
-                    var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBats].x;
-                    var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBats].y;
-                    var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBats].width;
-                    var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBats].height;
-                    var tempScale = Math.min((canvas.height / 3) / bHeight, 1);
-                    ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - (bWidth / 2) * tempScale, canvas.height * .57 - (bHeight / 2) * tempScale - this.posY / 4, bWidth * tempScale, bHeight * tempScale);
-                    var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBall].x;
-                    var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBall].y;
-                    var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBall].width;
-                    var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleBall].height;
-                    ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - (bWidth / 2 + 50) * tempScale, canvas.height * .57 - (bHeight / 2 + 50) * tempScale - this.posY / 3, bWidth * tempScale, bHeight * tempScale);
-                    var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].x;
-                    var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].y;
-                    var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].width;
-                    var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].height;
-                    ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - bWidth / 2, canvas.height * .2 - bHeight / 2 + 80 - this.posY / 2, bWidth, bHeight);
-                    var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleLogo].x;
-                    var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleLogo].y;
-                    var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleLogo].width;
-                    var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleLogo].height;
-                    ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - bWidth / 2, canvas.height * .2 - bHeight / 2 - this.posY, bWidth, bHeight);
                     break;
                 case "credits":
                     ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
@@ -1345,11 +1328,13 @@ var Elements;
                         var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.cup3].height;
                         ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - bWidth / 2, canvas.height * .2 - bHeight / 2 - this.posY, bWidth, bHeight);
                     }
-                    var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].x;
-                    var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].y;
-                    var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].width;
-                    var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].height;
-                    ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - bWidth / 2, canvas.height * .55 - bHeight / 2 + 80 - this.posY / 4, bWidth, bHeight);
+                    if(!window.TTWTMultiplayer) {
+                        var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].x;
+                        var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].y;
+                        var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].width;
+                        var bHeight = this.oUiElementsImgData.oData.oAtlasData[oImageIds.globeLogo].height;
+                        ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, canvas.width / 2 - bWidth / 2, canvas.height * .55 - bHeight / 2 + 80 - this.posY / 4, bWidth, bHeight);
+                    }
                     var tempScore = oGameData.userScore.toString();
                     for(var i = 0; i < tempScore.length; i++) {
                         var id = parseFloat(tempScore.charAt(i));
@@ -1970,7 +1955,7 @@ var Elements;
                     }
                     return;
                 }
-                if(this.lastHit == "enemy" && ((this.servingState == 2 && this.bounceNum == 1) || (this.servingState == 1 && this.bounceNum == 2)) && !(this.height < 0 && this.bounceNum == 0) && this.tablePosY > .5 && userBat.x > this.x - 82 * userBat.scale && userBat.x < this.x + 82 * userBat.scale && userBat.y > this.y - this.height * (this.scale * 3) - 16 - 82 * userBat.scale && userBat.y < this.y - this.height * (this.scale * 3) - 16 + 82 * userBat.scale) {
+                if(this.lastHit == "enemy" && ((this.servingState == 2 && this.bounceNum >= 1) || (this.servingState == 1 && this.bounceNum >= 1)) && !(this.height < 0 && this.bounceNum == 0) && this.tablePosY > .48 && userBat.x > this.x - 95 * userBat.scale && userBat.x < this.x + 95 * userBat.scale && userBat.y > this.y - this.height * (this.scale * 3) - 16 - 95 * userBat.scale && userBat.y < this.y - this.height * (this.scale * 3) - 16 + 95 * userBat.scale) {
                     playSound("hit" + Math.floor(Math.random() * 6));
                     rallyHits++;
                     this.servingState = 2;
@@ -1982,7 +1967,7 @@ var Elements;
                         window.TTWTMultiplayer.onLocalBallHit(this, rallyHitData, false);
                     }
                 }
-                if((!enemyBat.controlMode || enemyBat.controlMode === "BOT_MODE") && this.lastHit == "user" && ((this.servingState == 2 && this.bounceNum == 1) || (this.servingState == 1 && this.bounceNum == 2)) && this.tablePosY < .5 && this.tablePosY > 0 && enemyBat.x > this.x - 70 * enemyBat.scale && enemyBat.x < this.x + 70 * enemyBat.scale && enemyBat.y > this.y - this.height * (this.scale * 3) - 16 - 70 * enemyBat.scale && enemyBat.y < this.y - this.height * (this.scale * 3) - 16 + 70 * enemyBat.scale) {
+                if((!enemyBat.controlMode || enemyBat.controlMode === "BOT_MODE") && this.lastHit == "user" && ((this.servingState == 2 && this.bounceNum >= 1) || (this.servingState == 1 && this.bounceNum >= 1)) && this.tablePosY < .5 && this.tablePosY > 0 && enemyBat.x > this.x - 75 * enemyBat.scale && enemyBat.x < this.x + 75 * enemyBat.scale && enemyBat.y > this.y - this.height * (this.scale * 3) - 16 - 75 * enemyBat.scale && enemyBat.y < this.y - this.height * (this.scale * 3) - 16 + 75 * enemyBat.scale) {
                     playSound("hit" + Math.floor(Math.random() * 6));
                     rallyHits++;
                     this.servingState = 2;
@@ -3905,11 +3890,8 @@ function butEventHandler(_id, _oData) {
             userInput.removeHitArea("credits");
             userInput.removeHitArea("cupsFromStart");
             userInput.removeHitArea("changeCountryFromStart");
-            if(firstRun) {
-                initChooseCountry();
-            } else {
-                initGameIntro();
-            }
+            firstRun = false;
+            initGameIntro();
             break;
         case "countryChoice":
             playSound("hit" + Math.floor(Math.random() * 6));

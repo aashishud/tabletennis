@@ -51,12 +51,19 @@ export interface MatchControlPacket {
   gameId?: number;
 }
 
+export interface PeerPausedPacket {
+  type: 'PEER_PAUSED';
+  paused: boolean;
+  username?: string;
+}
+
 export type GamePacket =
   | PaddleMovePacket
   | BallHitPacket
   | BallMissPacket
   | PointResultPacket
-  | MatchControlPacket;
+  | MatchControlPacket
+  | PeerPausedPacket;
 
 function buildIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [
