@@ -40,108 +40,117 @@
   opacity: 0.6;
 }
 
-/* 🕹️ Top-Left Retro Arcade Player HUD */
+/* 🕹️ Top-Left Retro Arcade Compact HUD */
 .ttwt-hud-bar {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px 8px 10px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+.ttwt-hud-compact-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 6px;
   background: var(--pp-bg-cabinet);
   border: 3px solid var(--pp-border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--pp-shadow);
-  pointer-events: auto;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+  font-family: inherit;
 }
 
-.ttwt-hud-bar:hover {
+.ttwt-hud-compact-btn:hover {
   transform: translate(-1px, -1px);
   box-shadow: var(--pp-shadow-lg);
+  border-color: var(--pp-yellow);
 }
 
-.ttwt-hud-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
+.ttwt-hud-compact-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--pp-shadow-sm);
 }
 
-.ttwt-player-badge {
+.ttwt-hud-player-chip {
   font-family: 'Press Start 2P', monospace;
-  font-size: 9px;
-  padding: 3px 6px;
+  font-size: 8px;
+  padding: 3px 5px;
   background: var(--pp-yellow);
   color: #000;
   border: 2px solid #000;
-  border-radius: 6px;
-  box-shadow: var(--pp-shadow-sm);
-  font-weight: 800;
-}
-
-.ttwt-hud-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  object-fit: cover;
-  border: 3px solid var(--pp-cyan);
-  background: #1e1f22;
-  box-shadow: var(--pp-shadow-sm);
-}
-
-.ttwt-hud-meta {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.ttwt-hud-name {
-  font-size: 15px;
+  border-radius: 5px;
   font-weight: 900;
+  line-height: 1;
+}
+
+.ttwt-hud-mini-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 2px solid var(--pp-cyan);
+  background: #1e1f22;
+  box-shadow: 1px 1px 0px #000;
+}
+
+.ttwt-hud-compact-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
   color: #fff;
-  letter-spacing: 0.02em;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  letter-spacing: 0.03em;
   text-shadow: 1px 1px 0px #000;
+  white-space: nowrap;
 }
 
-.ttwt-hud-sub {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--pp-text-muted);
-  text-transform: uppercase;
-}
-
-/* Retro Arcade Status Badge */
-.ttwt-badge-pill {
+.ttwt-hud-status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 8px;
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 6px;
   font-family: 'Press Start 2P', monospace;
-  font-size: 8px;
-  border: 2px solid var(--pp-border);
-  box-shadow: var(--pp-shadow-sm);
+  font-size: 7px;
+  border: 1.5px solid #000;
+  box-shadow: 1px 1px 0px #000;
 }
 
-.ttwt-badge-bot {
+.ttwt-hud-status-badge.bot {
   background: #2a2046;
-  color: #e2d9f3;
+  color: #ff9900;
 }
 
-.ttwt-badge-p2p {
+.ttwt-hud-status-badge.p2p {
   background: var(--pp-green);
   color: #000;
   font-weight: 900;
 }
 
+.ttwt-hud-status-badge.waiting {
+  background: var(--pp-cyan);
+  color: #000;
+  font-weight: 900;
+}
+
+.ttwt-hud-status-badge .ttwt-status-text {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  line-height: 1;
+}
+
 .ttwt-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 2px;
   background: currentColor;
   border: 1px solid #000;
@@ -519,4 +528,18 @@
   color: var(--pp-text-muted);
   border-top: 2px dashed #301d54;
   padding-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .ttwt-hud-bar {
+    top: 8px;
+    left: 8px;
+  }
+  .ttwt-hud-compact-btn {
+    padding: 4px 8px 4px 5px;
+    gap: 6px;
+  }
+  .ttwt-hud-player-chip {
+    display: none;
+  }
 }

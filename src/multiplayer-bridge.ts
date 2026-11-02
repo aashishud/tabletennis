@@ -508,37 +508,20 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Renders floating Discord Avatar + Username badge directly above `userBat` during gameplay.
+   * Paddle identity renders: Keep active gameplay clean and unobstructed!
+   * The player's identity and score are already rendered on the top scoreboard.
+   * Floating badges directly over the paddles are suppressed during rallies to keep the ball sightline clear.
    */
-  public renderUserIdentity(ctx: CanvasRenderingContext2D, bat: any) {
-    if (window.firstRun) return;
-    const user = this.auth.getUser();
-    if (!user) return;
-
-    const badgeX = bat.x;
-    const badgeY = bat.y - 88 * bat.scale;
-    this.drawFloatingPlayerTag(ctx, badgeX, badgeY, user, '#00f0ff', Math.max(0.78, Math.min(1.05, bat.scale)));
+  public renderUserIdentity(_ctx: CanvasRenderingContext2D, _bat: any) {
+    // Intentionally no-op to maintain zero gameplay obstruction
   }
 
   /**
-   * Renders floating Discord Avatar + Username badge directly above `enemyBat` during gameplay.
+   * Opponent identity is displayed on the top scoreboard. Suppressing floating
+   * badges over the enemy bat prevents obscuring the ball near the net/baseline.
    */
-  public renderEnemyIdentity(ctx: CanvasRenderingContext2D, bat: any) {
-    if (window.firstRun) return;
-    const tableTop = window.tableTop;
-    const isNetwork = bat.controlMode === 'NETWORK_MODE' || this.mode === 'NETWORK_MODE';
-    const offsetX =
-      !isNetwork && tableTop
-        ? (tableTop.offsetX + 0.8 * (bat.flailInc || 0)) * tableTop.sideMultiplier
-        : 0;
-    const badgeX = bat.x + offsetX;
-    const badgeY = bat.y - 54 * (bat.scale || 0.5);
-
-    if (isNetwork && this.net.remotePlayer) {
-      this.drawFloatingPlayerTag(ctx, badgeX, badgeY, this.net.remotePlayer, '#ff007f', 0.82);
-    } else {
-      this.drawBotTag(ctx, badgeX, badgeY);
-    }
+  public renderEnemyIdentity(_ctx: CanvasRenderingContext2D, _bat: any) {
+    // Intentionally no-op to maintain zero gameplay obstruction
   }
 
   /**

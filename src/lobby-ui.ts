@@ -72,40 +72,22 @@ export class LobbyOverlayUI {
     const remote = this.net.remotePlayer;
 
     this.root.innerHTML = `
-      <!-- 🕹️ Top-Left Retro Arcade HUD -->
-      <div class="ttwt-hud-bar">
-        <div class="ttwt-hud-user" id="ttwt-hud-profile-trigger" title="Click to open PONGPONG 1v1 Lobby">
-          <span class="ttwt-player-badge">1P</span>
-          <img class="ttwt-hud-avatar" src="${user.avatarUrl}" alt="${user.displayName}" />
-          <div class="ttwt-hud-meta">
-            <div class="ttwt-hud-name">
-              <span>${this.escapeHtml(user.displayName)}</span>
-            </div>
-            <div class="ttwt-hud-sub">
-              ${user.authProvider === 'discord' ? 'DISCORD VERIFIED' : 'DEV MOCK PROFILE'}
-            </div>
-          </div>
-        </div>
-
-        <span class="ttwt-badge-pill ${isConnected ? 'ttwt-badge-p2p' : 'ttwt-badge-bot'}">
-          <span class="ttwt-dot ${isConnected || isWaiting ? 'ttwt-dot-pulse' : ''}"></span>
-          <span id="ttwt-live-rtt">
-            ${
+      <!-- 🕹️ Top-Left Retro Arcade HUD (Compact & Non-Obstructive) -->
+      <div class="ttwt-hud-bar" id="ttwt-hud-bar">
+        <button class="ttwt-hud-compact-btn" id="ttwt-open-lobby-btn" title="Open PONGPONG 1v1 Lobby (Esc to close)">
+          <span class="ttwt-hud-player-chip">1P</span>
+          <img class="ttwt-hud-mini-avatar" src="${user.avatarUrl}" alt="${user.displayName}" />
+          <span class="ttwt-hud-compact-title">🕹️ LOBBY</span>
+          <span class="ttwt-hud-status-badge ${isConnected ? 'p2p' : isWaiting ? 'waiting' : 'bot'}">
+            <span class="ttwt-dot ${isConnected || isWaiting ? 'ttwt-dot-pulse' : ''}"></span>
+            <span class="ttwt-status-text">${
               isConnected
-                ? `${this.net.rttMs || 1}MS P2P`
+                ? `${this.net.rttMs || 1}MS`
                 : isWaiting
-                ? `ROOM ${this.net.roomCode}`
-                : 'VS BOT'
-            }
+                ? 'ROOM'
+                : 'BOT'
+            }</span>
           </span>
-        </span>
-
-        <button class="ttwt-btn ttwt-btn-arcade" id="ttwt-open-lobby-btn">
-          🕹️ 1V1 LOBBY
-        </button>
-
-        <button class="ttwt-btn ttwt-btn-ghost" id="ttwt-quick-mock-toggle" title="Instant toggle between Sour (P1) and Player 2 for two-tab testing">
-          ⚡ ${user.username === 'sour' ? 'SWAP -> P2' : 'SWAP -> SOUR'}
         </button>
       </div>
 
