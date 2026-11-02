@@ -840,7 +840,9 @@ var Elements;
             this.wallId = 0;
             this.oImgData = assetLib.getData("background");
             this.oGameElementsImgData = assetLib.getData("gameElements");
-            this.wallId = oGameData.cupId % 5;
+            this.wallId = (window.TTWTMultiplayer && typeof window.TTWTMultiplayer.getSelectedWallId === "function")
+                ? window.TTWTMultiplayer.getSelectedWallId()
+                : (oGameData.cupId % 5);
         }
         Background.prototype.renderGame = function () {
             ctx.fillStyle = "rgba(0, 0, 0, 1)";
@@ -856,6 +858,9 @@ var Elements;
             var bWidth = this.oGameElementsImgData.oData.oAtlasData[oImageIds["tableBg" + this.wallId]].width;
             var bHeight = this.oGameElementsImgData.oData.oAtlasData[oImageIds["tableBg" + this.wallId]].height;
             ctx.drawImage(this.oGameElementsImgData.img, bX, bY, bWidth, bHeight, 0, canvas.height / 4 - 220 + tableTop.offsetY * 25, canvas.width, bHeight);
+            if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderMapAtmosphere === "function") {
+                window.TTWTMultiplayer.renderMapAtmosphere(ctx);
+            }
         };
         Background.prototype.renderMenu = function () {
             ctx.drawImage(this.oImgData.img, 0, 0, this.oImgData.img.width, this.oImgData.img.height, 0, 0, canvas.width, canvas.height);
@@ -1592,7 +1597,11 @@ var Elements;
             var bY = this.oGameElementsImgData.oData.oAtlasData[oImageIds.userBatEdge].y;
             var bWidth = this.oGameElementsImgData.oData.oAtlasData[oImageIds.userBatEdge].width;
             var bHeight = this.oGameElementsImgData.oData.oAtlasData[oImageIds.userBatEdge].height;
-            ctx.drawImage(this.oGameElementsImgData.img, bX, bY, bWidth, bHeight, -bWidth / 2, -bHeight / 3 - 23, bWidth, bHeight);
+            if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.drawTintedPaddleRubber === "function") {
+                window.TTWTMultiplayer.drawTintedPaddleRubber(ctx, this.oGameElementsImgData.img, bX, bY, bWidth, bHeight, -bWidth / 2, -bHeight / 3 - 23, "user");
+            } else {
+                ctx.drawImage(this.oGameElementsImgData.img, bX, bY, bWidth, bHeight, -bWidth / 2, -bHeight / 3 - 23, bWidth, bHeight);
+            }
             ctx.restore();
             if(window.TTWTMultiplayer && window.TTWTMultiplayer.renderUserIdentity) {
                 window.TTWTMultiplayer.renderUserIdentity(ctx, this);
@@ -1801,6 +1810,10 @@ var Elements;
             var bWidth = this.oGameElementsImgData.oData.oAtlasData[oImageIds["enemyBat" + this.id]].width;
             var bHeight = this.oGameElementsImgData.oData.oAtlasData[oImageIds["enemyBat" + this.id]].height;
             ctx.drawImage(this.oGameElementsImgData.img, bX, bY, bWidth, bHeight, -bWidth / 2, -bHeight / 3, bWidth, bHeight);
+            if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.drawTintedPaddleRubber === "function") {
+                var edgeData = this.oGameElementsImgData.oData.oAtlasData[oImageIds.userBatEdge];
+                window.TTWTMultiplayer.drawTintedPaddleRubber(ctx, this.oGameElementsImgData.img, edgeData.x, edgeData.y, edgeData.width, edgeData.height, -edgeData.width / 2, -edgeData.height / 3 - 23, "enemy");
+            }
             ctx.restore();
             if(window.TTWTMultiplayer && window.TTWTMultiplayer.renderEnemyIdentity) {
                 window.TTWTMultiplayer.renderEnemyIdentity(ctx, this);
@@ -2128,7 +2141,9 @@ var Elements;
             this.bounceMarkScale = 0;
             this.oGameElementsImgData = assetLib.getData("gameElements");
             this.oShadowImgData = assetLib.getData("shadow");
-            this.id = (oGameData.cupId * 6 + oGameData.gameId) % 4;
+            this.id = (window.TTWTMultiplayer && typeof window.TTWTMultiplayer.getSelectedTableId === "function")
+                ? window.TTWTMultiplayer.getSelectedTableId()
+                : ((oGameData.cupId * 6 + oGameData.gameId) % 4);
             if(!isMobile) {
                 this.segs = 150;
             }

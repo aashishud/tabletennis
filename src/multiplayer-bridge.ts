@@ -32,9 +32,100 @@ declare global {
 
 export type ControlMode = 'BOT_MODE' | 'NETWORK_MODE';
 
+export interface ArenaMapConfig {
+  id: string;
+  name: string;
+  subtitle: string;
+  wallId: number;
+  tableId: number;
+  previewTableHex: string;
+  previewWallHex: string;
+  atmosphereTint: string;
+  accentHex: string;
+}
+
+export const ARENA_MAPS: ArenaMapConfig[] = [
+  {
+    id: 'classic',
+    name: 'CLASSIC GYM',
+    subtitle: 'BLUE COURT • WOOD HALL',
+    wallId: 0,
+    tableId: 0,
+    previewTableHex: '#0284c7',
+    previewWallHex: '#b47b44',
+    atmosphereTint: 'rgba(0, 140, 255, 0.04)',
+    accentHex: '#00f0ff',
+  },
+  {
+    id: 'cyber',
+    name: 'NEON CYBER',
+    subtitle: 'SYNTHWAVE • VIOLET GRID',
+    wallId: 1,
+    tableId: 1,
+    previewTableHex: '#7e22ce',
+    previewWallHex: '#1e1b4b',
+    atmosphereTint: 'rgba(168, 85, 247, 0.14)',
+    accentHex: '#ff007f',
+  },
+  {
+    id: 'emerald',
+    name: 'EMERALD CLUB',
+    subtitle: 'GREEN TURF • BRICK HALL',
+    wallId: 2,
+    tableId: 2,
+    previewTableHex: '#059669',
+    previewWallHex: '#7c2d12',
+    atmosphereTint: 'rgba(16, 185, 129, 0.08)',
+    accentHex: '#00ff66',
+  },
+  {
+    id: 'sunset',
+    name: 'SUNSET DOJO',
+    subtitle: 'GOLD COURT • WARM GLOW',
+    wallId: 3,
+    tableId: 3,
+    previewTableHex: '#d97706',
+    previewWallHex: '#78350f',
+    atmosphereTint: 'rgba(255, 120, 0, 0.10)',
+    accentHex: '#ffe600',
+  },
+  {
+    id: 'midnight',
+    name: 'TOKYO NIGHT',
+    subtitle: 'CRIMSON COURT • DARK SKY',
+    wallId: 4,
+    tableId: 1,
+    previewTableHex: '#be185d',
+    previewWallHex: '#0f172a',
+    atmosphereTint: 'rgba(255, 0, 127, 0.14)',
+    accentHex: '#00f0ff',
+  },
+];
+
+export interface PaddleColorOption {
+  id: string;
+  name: string;
+  hex: string;
+}
+
+export const PADDLE_COLORS: PaddleColorOption[] = [
+  { id: 'red', name: 'ARCADE RED', hex: '#ef4444' },
+  { id: 'cyan', name: 'NEON CYAN', hex: '#00f0ff' },
+  { id: 'pink', name: 'HOT PINK', hex: '#ff007f' },
+  { id: 'yellow', name: 'ELECTRIC GOLD', hex: '#ffe600' },
+  { id: 'green', name: 'TOXIC GREEN', hex: '#00ff66' },
+  { id: 'purple', name: 'ROYAL PURPLE', hex: '#a855f7' },
+  { id: 'orange', name: 'BLAZE ORANGE', hex: '#ff6b00' },
+  { id: 'white', name: 'FROST WHITE', hex: '#f8fafc' },
+];
+
 export class MultiplayerBridge {
   public mode: ControlMode = 'BOT_MODE';
   public peerPaused = false;
+  public selectedMapId: string = 'classic';
+  public localPaddleColor: string = '#ef4444';
+  public remotePaddleColor: string = '#00f0ff';
+
   private auth: DiscordAuthManager;
   private net: WebRTCRoomManager;
   private seq = 0;
@@ -42,10 +133,19 @@ export class MultiplayerBridge {
   private lastSentNormX = Number.NaN;
   private lastSentNormY = Number.NaN;
   private lastSentPaddleAt = 0;
+  private tintedPaddleCache = new Map<string, HTMLCanvasElement>();
+  private lobbyListeners: Array<() => void> = [];
 
   constructor(auth: DiscordAuthManager, net: WebRTCRoomManager) {
     this.auth = auth;
     this.net = net;
+
+    try {
+      const savedColor = localStorage.getItem('pongpong_paddle_color');
+      if (savedColor && PADDLE_COLORS.some((c) => c.hex === savedColor)) {
+        this.localPaddleColor = savedColor;
+      }
+    } catch {}
 
     this.auth.preloadAvatar(BOT_PROFILE.avatarUrl);
 
@@ -58,16 +158,22 @@ export class MultiplayerBridge {
       if (remote?.avatarUrl) {
         this.auth.preloadAvatar(remote.avatarUrl);
       }
+      if (remote) {
+        this.broadcastLobbyState();
+      }
+      this.notifyLobbyListeners();
     });
 
     this.net.onPacket((packet) => this.handlePacket(packet));
     this.net.onStatusChange((status) => {
       if (status === 'connected') {
         this.setMode('NETWORK_MODE');
+        this.broadcastLobbyState();
       } else if (status === 'disconnected' || status === 'error') {
         this.setMode('BOT_MODE');
         this.peerPaused = false;
       }
+      this.notifyLobbyListeners();
     });
 
     // Notify peer when this browser tab loses focus / minimizes so matches aren't ghosted
@@ -81,6 +187,157 @@ export class MultiplayerBridge {
         });
       }
     });
+  }
+
+  public onLobbyStateChange(cb: () => void) {
+    this.lobbyListeners.push(cb);
+  }
+
+  private notifyLobbyListeners() {
+    for (const cb of this.lobbyListeners) {
+      cb();
+    }
+  }
+
+  public getSelectedMap(): ArenaMapConfig {
+    return ARENA_MAPS.find((m) => m.id === this.selectedMapId) || ARENA_MAPS[0];
+  }
+
+  public getSelectedWallId(): number {
+    return this.getSelectedMap().wallId;
+  }
+
+  public getSelectedTableId(): number {
+    return this.getSelectedMap().tableId;
+  }
+
+  public canLocalSelectMap(): boolean {
+    // Host (or solo player not connected as guest) can change the map
+    return this.net.role !== 'guest';
+  }
+
+  public setSelectedMap(mapId: string) {
+    if (!this.canLocalSelectMap()) return;
+    if (!ARENA_MAPS.some((m) => m.id === mapId)) return;
+    this.selectedMapId = mapId;
+    this.applyMapToActiveGame();
+    this.broadcastLobbyState();
+    this.notifyLobbyListeners();
+  }
+
+  public setLocalPaddleColor(hex: string) {
+    if (!PADDLE_COLORS.some((c) => c.hex === hex)) return;
+    this.localPaddleColor = hex;
+    try {
+      localStorage.setItem('pongpong_paddle_color', hex);
+    } catch {}
+    this.broadcastLobbyState();
+    this.notifyLobbyListeners();
+  }
+
+  public broadcastLobbyState() {
+    if (!this.net.roomCode) return;
+    this.net.sendReliable({
+      type: 'LOBBY_UPDATE',
+      mapId: this.canLocalSelectMap() ? this.selectedMapId : undefined,
+      paddleColor: this.localPaddleColor,
+      senderRole: this.net.role,
+    });
+  }
+
+  private applyMapToActiveGame() {
+    const mapCfg = this.getSelectedMap();
+    if (window.oGameData) {
+      window.oGameData.cupId = mapCfg.wallId;
+      window.oGameData.gameId = mapCfg.tableId;
+    }
+    if (window.tableTop) {
+      window.tableTop.id = mapCfg.tableId;
+    }
+    if ((window as any).background) {
+      (window as any).background.wallId = mapCfg.wallId;
+    }
+  }
+
+  public renderMapAtmosphere(ctx: CanvasRenderingContext2D) {
+    const canvas = window.canvas;
+    if (!canvas) return;
+    const mapCfg = this.getSelectedMap();
+    if (mapCfg.atmosphereTint) {
+      ctx.save();
+      ctx.fillStyle = mapCfg.atmosphereTint;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+  }
+
+  private hexToRgb(hex: string): [number, number, number] {
+    const clean = hex.replace('#', '');
+    const num = parseInt(clean, 16);
+    if (Number.isNaN(num)) return [239, 68, 68];
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
+
+  /**
+   * Renders a custom-tinted rubber surface on either userBat or enemyBat while keeping
+   * the 3D dimple texture, edge shading, and wooden handle intact.
+   */
+  public drawTintedPaddleRubber(
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    bX: number,
+    bY: number,
+    bWidth: number,
+    bHeight: number,
+    destX: number,
+    destY: number,
+    who: 'user' | 'enemy'
+  ) {
+    const targetHex = who === 'user' ? this.localPaddleColor : this.remotePaddleColor;
+    const cacheKey = `${targetHex}:${bX}:${bY}:${bWidth}:${bHeight}`;
+    let offCanvas = this.tintedPaddleCache.get(cacheKey);
+
+    if (!offCanvas && img && img.complete && bWidth > 0 && bHeight > 0) {
+      try {
+        const c = document.createElement('canvas');
+        c.width = bWidth;
+        c.height = bHeight;
+        const cCtx = c.getContext('2d');
+        if (cCtx) {
+          cCtx.drawImage(img, bX, bY, bWidth, bHeight, 0, 0, bWidth, bHeight);
+          const imgData = cCtx.getImageData(0, 0, bWidth, bHeight);
+          const data = imgData.data;
+          const [tr, tg, tb] = this.hexToRgb(targetHex);
+
+          for (let i = 0; i < data.length; i += 4) {
+            const a = data[i + 3];
+            if (a > 0) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              // Extract luminance from original red rubber sprite (~0.38 average)
+              const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+              const shade = Math.min(1.32, lum / 0.40);
+              const spec = Math.max(0, (lum - 0.52) * 110);
+              data[i] = Math.min(255, Math.round(tr * shade + spec));
+              data[i + 1] = Math.min(255, Math.round(tg * shade + spec));
+              data[i + 2] = Math.min(255, Math.round(tb * shade + spec));
+            }
+          }
+          cCtx.putImageData(imgData, 0, 0);
+          offCanvas = c;
+          this.tintedPaddleCache.set(cacheKey, c);
+        }
+      } catch {
+        // Fallback to raw sprite if canvas is tainted
+      }
+    }
+
+    if (offCanvas) {
+      ctx.drawImage(offCanvas, 0, 0, bWidth, bHeight, destX, destY, bWidth, bHeight);
+    } else {
+      ctx.drawImage(img, bX, bY, bWidth, bHeight, destX, destY, bWidth, bHeight);
+    }
   }
 
   public isPeerConnected(): boolean {
@@ -122,10 +379,13 @@ export class MultiplayerBridge {
    */
   public start1v1Match() {
     window.firstRun = false;
+    this.applyMapToActiveGame();
     if (this.net.status === 'connected') {
       this.startMultiplayerMatch(true);
     } else {
       this.setMode('BOT_MODE');
+      // Give AI Bot a contrasting paddle color in solo mode
+      this.remotePaddleColor = this.localPaddleColor === '#00f0ff' ? '#ff007f' : '#00f0ff';
       if (typeof window._initGame === 'function') {
         window._initGame();
       } else if (typeof window.initGame === 'function') {
@@ -168,6 +428,7 @@ export class MultiplayerBridge {
    */
   public startMultiplayerMatch(asInitiator = true) {
     this.setMode('NETWORK_MODE');
+    this.applyMapToActiveGame();
 
     // Ensure tutorial overlay is skipped for 1v1 multiplayer matches
     window.firstRun = false;
@@ -183,6 +444,9 @@ export class MultiplayerBridge {
     if (asInitiator && this.net.status === 'connected') {
       this.net.sendReliable({
         type: 'MATCH_START',
+        mapId: this.selectedMapId,
+        hostPaddleColor: this.net.role === 'host' ? this.localPaddleColor : this.remotePaddleColor,
+        guestPaddleColor: this.net.role === 'guest' ? this.localPaddleColor : this.remotePaddleColor,
         cupId: window.oGameData?.cupId || 0,
         gameId: window.oGameData?.gameId || 0,
       });
@@ -351,7 +615,32 @@ export class MultiplayerBridge {
   }
 
   private handlePacket(packet: GamePacket) {
+    if (packet.type === 'LOBBY_UPDATE') {
+      if (packet.mapId && ARENA_MAPS.some((m) => m.id === packet.mapId)) {
+        // Host's map choice is synced to Guest
+        if (this.net.role === 'guest' || packet.senderRole === 'host') {
+          this.selectedMapId = packet.mapId;
+          this.applyMapToActiveGame();
+        }
+      }
+      if (packet.paddleColor && PADDLE_COLORS.some((c) => c.hex === packet.paddleColor)) {
+        this.remotePaddleColor = packet.paddleColor;
+      }
+      this.notifyLobbyListeners();
+      return;
+    }
+
     if (packet.type === 'MATCH_START' || packet.type === 'MATCH_REMATCH') {
+      if (packet.mapId && ARENA_MAPS.some((m) => m.id === packet.mapId)) {
+        this.selectedMapId = packet.mapId;
+        this.applyMapToActiveGame();
+      }
+      if (this.net.role === 'guest' && packet.hostPaddleColor) {
+        this.remotePaddleColor = packet.hostPaddleColor;
+      } else if (this.net.role === 'host' && packet.guestPaddleColor) {
+        this.remotePaddleColor = packet.guestPaddleColor;
+      }
+      this.notifyLobbyListeners();
       this.startMultiplayerMatch(false);
       return;
     }
@@ -481,7 +770,7 @@ export class MultiplayerBridge {
     if (!canvas) return;
     const posY = panel ? panel.posY || 0 : 0;
     const cx = canvas.width / 2;
-    const cy = canvas.height * 0.28 - posY;
+    const cy = canvas.height * 0.21 - posY;
 
     ctx.save();
 
@@ -526,7 +815,7 @@ export class MultiplayerBridge {
     ctx.textBaseline = 'middle';
     const badgeW = 230;
     const badgeH = 26;
-    const badgeY = cy - 65;
+    const badgeY = cy - 60;
 
     // Neo-brutalist badge shadow
     ctx.fillStyle = '#000000';
@@ -563,18 +852,18 @@ export class MultiplayerBridge {
     const subText = 'THE GOOFIEST 1V1 PADDLE BRAWL';
     ctx.font = '700 10px "Press Start 2P", monospace';
     ctx.fillStyle = '#000000';
-    ctx.fillText(subText, cx + 2, cy + 42);
+    ctx.fillText(subText, cx + 2, cy + 38);
     ctx.fillStyle = '#00f0ff';
-    ctx.fillText(subText, cx, cy + 40);
+    ctx.fillText(subText, cx, cy + 36);
 
     // 6. Blinking Arcade Prompt
     const blink = Math.floor(time / 550) % 2 === 0;
     if (blink) {
       ctx.font = '700 11px "Press Start 2P", monospace';
       ctx.fillStyle = '#000000';
-      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx + 2, cy + 92);
+      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx + 2, cy + 74);
       ctx.fillStyle = '#ffe600';
-      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx, cy + 90);
+      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx, cy + 72);
     }
 
     ctx.restore();

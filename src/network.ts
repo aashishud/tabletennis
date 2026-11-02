@@ -49,7 +49,17 @@ export interface MatchControlPacket {
   timestamp?: number;
   cupId?: number;
   gameId?: number;
+  mapId?: string;
+  hostPaddleColor?: string;
+  guestPaddleColor?: string;
   by?: string | null;
+}
+
+export interface LobbyUpdatePacket {
+  type: 'LOBBY_UPDATE';
+  mapId?: string;
+  paddleColor?: string;
+  senderRole?: 'host' | 'guest' | null;
 }
 
 export interface PeerPausedPacket {
@@ -64,6 +74,7 @@ export type GamePacket =
   | BallMissPacket
   | PointResultPacket
   | MatchControlPacket
+  | LobbyUpdatePacket
   | PeerPausedPacket;
 
 function buildIceServers(): RTCIceServer[] {
