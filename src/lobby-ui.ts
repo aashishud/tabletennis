@@ -296,6 +296,13 @@ export class LobbyOverlayUI {
       }
     });
 
+    // Pressing ESC closes the lobby modal
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.modalOpen) {
+        this.closeModal();
+      }
+    });
+
     document.getElementById('ttwt-quick-mock-toggle')?.addEventListener('click', () => {
       const current = this.auth.getUser();
       if (current.username === 'sour') {

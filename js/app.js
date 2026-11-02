@@ -49,24 +49,105 @@ var Utils;
             }
         }
         AssetLoader.prototype.render = function () {
-            ctx.fillStyle = "rgba(0, 0, 0, 1)";
+            var cx = canvas.width / 2;
+            var cy = canvas.height / 2;
+            var pct = Math.min(1, Math.max(0, this.assetsLoaded / Math.max(1, this.totalAssets)));
+            var pctInt = Math.round(pct * 100);
+
+            // 1. Retro Cabinet Background
+            ctx.fillStyle = "#150d2a";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(canvas.width / 2 - 150, canvas.height / 2 + 20, (300 / this.totalAssets) * this.assetsLoaded, 30);
-            ctx.drawImage(this.oLoaderImgData.img, canvas.width / 2 - this.oLoaderImgData.img.width / 2, canvas.height / 2 - this.oLoaderImgData.img.height / 2);
-            this.spinnerRot += delta * 3;
-            ctx.save();
-            ctx.translate(canvas.width / 2 - 33, canvas.height / 2 - 20);
-            ctx.rotate(this.spinnerRot);
-            ctx.drawImage(this.oLoadSpinnerImgData.img, -this.oLoadSpinnerImgData.img.width / 2, -this.oLoadSpinnerImgData.img.height / 2);
-            ctx.restore();
-            this.displayNumbers();
+
+            // 2. Scanline grid effect
+            ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+            for (var y = 0; y < canvas.height; y += 4) {
+                ctx.fillRect(0, y, canvas.width, 2);
+            }
+
+            // 3. Subtle ambient glow
+            var radGrad = ctx.createRadialGradient(cx, cy - 80, 10, cx, cy - 80, 240);
+            radGrad.addColorStop(0, "rgba(255, 0, 127, 0.25)");
+            radGrad.addColorStop(0.5, "rgba(0, 240, 255, 0.12)");
+            radGrad.addColorStop(1, "rgba(21, 13, 42, 0)");
+            ctx.fillStyle = radGrad;
+            ctx.fillRect(0, cy - 220, canvas.width, 280);
+
+            // 4. Retro Arcade Title: PONGPONG
+            var title = "PONGPONG";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = '900 46px "Press Start 2P", monospace';
+
+            // 3D Extrusion Shadows
+            for (var s = 6; s >= 1; s--) {
+                ctx.fillStyle = s > 3 ? "#000000" : "#ff007f";
+                ctx.fillText(title, cx + s * 2, cy - 80 + s * 2);
+            }
+            // Face
+            ctx.fillStyle = "#ffe600";
+            ctx.fillText(title, cx, cy - 80);
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = "#ffffff";
+            ctx.strokeText(title, cx, cy - 80);
+
+            // Subtitle
+            ctx.font = '700 10px "Press Start 2P", monospace';
+            ctx.fillStyle = "#000000";
+            ctx.fillText("THE GOOFIEST 1V1 PADDLE BRAWL", cx + 2, cy - 38);
+            ctx.fillStyle = "#00f0ff";
+            ctx.fillText("THE GOOFIEST 1V1 PADDLE BRAWL", cx, cy - 40);
+
+            // 5. Chunky Neo-Brutalist Loading Bar Container
+            var barW = 320;
+            var barH = 34;
+            var barX = cx - barW / 2;
+            var barY = cy + 20;
+
+            // Hard 3D Drop Shadow
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(barX + 4, barY + 4, barW, barH);
+
+            // Container Box
+            ctx.fillStyle = "#20133e";
+            ctx.fillRect(barX, barY, barW, barH);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#000000";
+            ctx.strokeRect(barX, barY, barW, barH);
+
+            // Progress Fill Bar
+            var innerPad = 4;
+            var fillMaxW = barW - innerPad * 2;
+            var fillW = Math.max(0, Math.min(fillMaxW, fillMaxW * pct));
+            if (fillW > 0) {
+                ctx.fillStyle = "#00f0ff";
+                ctx.fillRect(barX + innerPad, barY + innerPad, fillW, barH - innerPad * 2);
+
+                // Top highlight stripe
+                ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+                ctx.fillRect(barX + innerPad, barY + innerPad, fillW, 4);
+            }
+
+            // 6. Percentage text
+            ctx.font = '900 12px "Press Start 2P", monospace';
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#000000";
+            ctx.fillText(pctInt + "%", cx + 2, barY + barH / 2 + 2);
+            ctx.fillStyle = "#ffe600";
+            ctx.fillText(pctInt + "%", cx, barY + barH / 2);
+
+            // 7. Blinking Goofy Status Prompt
+            var time = (new Date()).getTime();
+            var blink = Math.floor(time / 450) % 2 === 0;
+            if (blink) {
+                ctx.font = '700 9px "Press Start 2P", monospace';
+                ctx.fillStyle = "#000000";
+                ctx.fillText("★ INITIALIZING ARCADE ENGINE... ★", cx + 2, cy + 86);
+                ctx.fillStyle = "#ffe600";
+                ctx.fillText("★ INITIALIZING ARCADE ENGINE... ★", cx, cy + 84);
+            }
         };
         AssetLoader.prototype.displayNumbers = function () {
-            ctx.textAlign = "left";
-            ctx.font = "bold 40px arial";
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText(Math.round((this.assetsLoaded / this.totalAssets) * 100) + "%", canvas.width / 2 + 0, canvas.height / 2 - 6);
         };
         AssetLoader.prototype.loadExtraAssets = function (_callback, _aFileData) {
             this.showBar = false;
@@ -1014,9 +1095,12 @@ var Elements;
             }
             switch(this.panelType) {
                 case "splash":
+                    if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderStartTitle === "function") {
+                        window.TTWTMultiplayer.renderStartTitle(ctx, this);
+                        break;
+                    }
                     ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(this.oSplashLogoImgData.img, canvas.width / 2 - this.oSplashLogoImgData.img.width / 2, canvas.height / 2 - this.oSplashLogoImgData.img.height / 2 - this.posY);
                     break;
                 case "start":
                     if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderStartTitle === "function") {
@@ -1030,9 +1114,12 @@ var Elements;
                     ctx.drawImage(this.oUiElementsImgData.img, bX, bY, bWidth, bHeight, 0, canvas.height * .57 - bHeight / 2 + this.posY / 2, canvas.width, bHeight);
                     break;
                 case "credits":
+                    if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderStartTitle === "function") {
+                        window.TTWTMultiplayer.renderStartTitle(ctx, this);
+                        break;
+                    }
                     ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(this.oSplashLogoImgData.img, canvas.width / 2 - this.oSplashLogoImgData.img.width / 2, canvas.height * .45 - this.oSplashLogoImgData.img.height / 2 - this.posY);
                     break;
                 case "chooseCountry":
                     for(var i = 0; i < countryFlags.aIds.length / 2; i++) {
@@ -1117,6 +1204,10 @@ var Elements;
                     }
                     break;
                 case "gameIntro":
+                    if(window.TTWTMultiplayer && window.TTWTMultiplayer.renderIntroOrCompleteAvatars) {
+                        window.TTWTMultiplayer.renderIntroOrCompleteAvatars(ctx, this, "gameIntro");
+                        break;
+                    }
                     var bX = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].x;
                     var bY = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].y;
                     var bWidth = this.oUiElementsImgData.oData.oAtlasData[oImageIds.titleFadeBar].width;
@@ -1277,6 +1368,10 @@ var Elements;
                     }
                     break;
                 case "gameComplete":
+                    if(window.TTWTMultiplayer && window.TTWTMultiplayer.renderIntroOrCompleteAvatars) {
+                        window.TTWTMultiplayer.renderIntroOrCompleteAvatars(ctx, this, "gameComplete");
+                        break;
+                    }
                     if(oGameData.userScore > oGameData.enemyScore) {
                         this.flare(canvas.width / 2, canvas.height * .2 - 10 - this.posY);
                     }
@@ -1364,8 +1459,11 @@ var Elements;
                     }
                     break;
                 case "pause":
-                    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+                    ctx.fillStyle = "rgba(13, 27, 42, 0.88)";
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderPauseScreen === "function") {
+                        window.TTWTMultiplayer.renderPauseScreen(ctx, this);
+                    }
                     break;
             }
             if(_butsOnTop) {
@@ -3136,59 +3234,9 @@ function initStartScreen() {
         ],
         id: oImageIds.playBut
     };
-    var oMoreGamesBut = {
-        oImgData: assetLib.getData("moreGamesBut"),
-        aPos: [
-            85,
-            -40
-        ],
-        align: [
-            0,
-            1
-        ],
-        id: "none",
-        scale: .25,
-        noMove: true
-    };
-    var oCreditsBut = {
-        oImgData: assetLib.getData("uiButs"),
-        aPos: [
-            -90,
-            32
-        ],
-        align: [
-            1,
-            0
-        ],
-        id: oImageIds.infoBut,
-        noMove: true
-    };
     userInput.addHitArea("playFromStart", butEventHandler, null, "image", oPlayBut);
-    userInput.addHitArea("moreGames", butEventHandler, null, "image", oMoreGamesBut);
 
-    var aButs = new Array(oMoreGamesBut, oPlayBut);
-    if(window.famobi.hasFeature("credits")) {
-        userInput.addHitArea("credits", butEventHandler, null, "image", oCreditsBut);
-        aButs = new Array(oMoreGamesBut, oCreditsBut, oPlayBut);
-    }
-
-    if(!firstRun) {
-        var oCupsBut = {
-            oImgData: assetLib.getData("uiButs"),
-            aPos: [
-                -54,
-                -54
-            ],
-            align: [
-                1,
-                1
-            ],
-            id: oImageIds.cupsBut,
-            noMove: true
-        };
-        userInput.addHitArea("cupsFromStart", butEventHandler, null, "image", oCupsBut);
-        aButs.push(oCupsBut);
-    }
+    var aButs = new Array(oPlayBut);
     addMuteBut(aButs);
     panel = new Elements.Panel(gameState, aButs);
     panel.startTween1();

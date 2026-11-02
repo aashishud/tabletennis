@@ -579,7 +579,7 @@ export class MultiplayerBridge {
 
   /**
    * Replaces country flags on `gameIntro` (VS screen) & `gameComplete` (Match Over screen)
-   * with retro arcade cards and marquee headers.
+   * with retro arcade cards, marquee headers, and LED score displays.
    */
   public renderIntroOrCompleteAvatars(
     ctx: CanvasRenderingContext2D,
@@ -597,8 +597,8 @@ export class MultiplayerBridge {
 
     const centerY =
       screenType === 'gameIntro'
-        ? canvas.height * 0.6 - posY / 4
-        : canvas.height * 0.55 - 110 - posY / 2;
+        ? canvas.height * 0.52 - posY / 4
+        : canvas.height * 0.48 - posY / 2;
 
     const leftX = cx - 128;
     const rightX = cx + 128;
@@ -615,8 +615,26 @@ export class MultiplayerBridge {
     // Center VS / VICTORY Marquee
     if (screenType === 'gameIntro') {
       ctx.save();
+      // Top Header
+      const headerY = canvas.height * 0.22 - posY / 2;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const bannerText = '★ 1V1 ARCADE BRAWL ★';
+      ctx.font = '900 22px "Press Start 2P", monospace';
+      ctx.fillStyle = '#000000';
+      ctx.fillText(bannerText, cx + 3, headerY + 3);
+      ctx.fillStyle = '#ff007f';
+      ctx.fillText(bannerText, cx + 1, headerY + 1);
+      ctx.fillStyle = '#ffe600';
+      ctx.fillText(bannerText, cx, headerY);
+
+      ctx.font = '700 10px "Press Start 2P", monospace';
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillText('FIRST TO 11 POINTS WINS', cx, headerY + 32);
+
+      // Chunky VS Box in Center
       const vsY = centerY;
-      // Chunky VS Box
       ctx.fillStyle = '#000000';
       ctx.fillRect(cx - 28, vsY - 18, 56, 36);
       ctx.fillStyle = '#ffe600';
@@ -627,19 +645,27 @@ export class MultiplayerBridge {
 
       ctx.font = '900 16px "Press Start 2P", monospace';
       ctx.fillStyle = '#000000';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
       ctx.fillText('VS', cx, vsY + 1);
+
+      // Bottom Prompt
+      const time = performance.now();
+      if (Math.floor(time / 500) % 2 === 0) {
+        ctx.font = '700 11px "Press Start 2P", monospace';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx + 2, canvas.height * 0.76 + 2);
+        ctx.fillStyle = '#ffe600';
+        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx, canvas.height * 0.76);
+      }
       ctx.restore();
     } else {
       // Game Complete Header
       ctx.save();
-      const headerY = canvas.height * 0.2 - posY;
+      const headerY = canvas.height * 0.18 - posY;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
       const bannerText = userWon ? '★ VICTORY! ★' : enemyWon ? '★ DEFEAT! ★' : '★ DRAW! ★';
-      ctx.font = '900 24px "Press Start 2P", monospace';
+      ctx.font = '900 28px "Press Start 2P", monospace';
 
       // 3D shadow
       ctx.fillStyle = '#000000';
@@ -658,6 +684,40 @@ export class MultiplayerBridge {
         : 'TIED BRAWL!';
       ctx.fillStyle = '#00f0ff';
       ctx.fillText(sub, cx, headerY + 36);
+
+      // Scoreboard Banner Box
+      const sbW = 240;
+      const sbH = 50;
+      const sbY = centerY + 96;
+
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(cx - sbW / 2 + 4, sbY - sbH / 2 + 4, sbW, sbH);
+      ctx.fillStyle = '#150d2a';
+      ctx.fillRect(cx - sbW / 2, sbY - sbH / 2, sbW, sbH);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ffe600';
+      ctx.strokeRect(cx - sbW / 2, sbY - sbH / 2, sbW, sbH);
+
+      const uScore = window.oGameData?.userScore || 0;
+      const eScore = window.oGameData?.enemyScore || 0;
+
+      ctx.font = '900 20px "Press Start 2P", monospace';
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillText(String(uScore), cx - 50, sbY + 1);
+      ctx.fillStyle = '#ffe600';
+      ctx.fillText(':', cx, sbY + 1);
+      ctx.fillStyle = '#ff007f';
+      ctx.fillText(String(eScore), cx + 50, sbY + 1);
+
+      // Bottom Prompt
+      const time = performance.now();
+      if (Math.floor(time / 500) % 2 === 0) {
+        ctx.font = '700 10px "Press Start 2P", monospace';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('► CLICK REPLAY OR OPEN LOBBY ◄', cx + 2, canvas.height * 0.82 + 2);
+        ctx.fillStyle = '#ffe600';
+        ctx.fillText('► CLICK REPLAY OR OPEN LOBBY ◄', cx, canvas.height * 0.82);
+      }
       ctx.restore();
     }
 
@@ -682,6 +742,36 @@ export class MultiplayerBridge {
       isMultiplayer ? '2P' : 'BOT',
       enemyWon
     );
+  }
+
+  /**
+   * Renders the retro arcade pause screen overlay.
+   */
+  public renderPauseScreen(ctx: CanvasRenderingContext2D, _panel: any) {
+    const canvas = window.canvas;
+    if (!canvas) return;
+    const cx = canvas.width / 2;
+    const cy = canvas.height * 0.42;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const title = 'PAUSED';
+    ctx.font = '900 44px "Press Start 2P", monospace';
+    // 3D Shadow
+    for (let s = 5; s >= 1; s--) {
+      ctx.fillStyle = s > 2 ? '#000000' : '#ff007f';
+      ctx.fillText(title, cx + s * 2, cy + s * 2);
+    }
+    ctx.fillStyle = '#ffe600';
+    ctx.fillText(title, cx, cy);
+
+    ctx.font = '700 11px "Press Start 2P", monospace';
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillText('CLICK PLAY OR HIT ESC TO RESUME', cx, cy + 50);
+
+    ctx.restore();
   }
 
   /**
