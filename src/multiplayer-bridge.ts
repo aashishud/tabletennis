@@ -580,8 +580,8 @@ export class MultiplayerBridge {
 
     const centerY =
       screenType === 'gameIntro'
-        ? canvas.height * 0.52 - posY / 4
-        : canvas.height * 0.48 - posY / 2;
+        ? canvas.height * 0.48 - posY / 4
+        : canvas.height * 0.43 - posY / 2;
 
     const leftX = cx - 128;
     const rightX = cx + 128;
@@ -630,20 +630,21 @@ export class MultiplayerBridge {
       ctx.fillStyle = '#000000';
       ctx.fillText('VS', cx, vsY + 1);
 
-      // Bottom Prompt
+      // Bottom Prompt (Positioned safely above play button at 0.85)
       const time = performance.now();
       if (Math.floor(time / 500) % 2 === 0) {
         ctx.font = '700 11px "Press Start 2P", monospace';
+        const promptY = Math.round(canvas.height * 0.70);
         ctx.fillStyle = '#000000';
-        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx + 2, canvas.height * 0.76 + 2);
+        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx + 2, promptY + 2);
         ctx.fillStyle = '#ffe600';
-        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx, canvas.height * 0.76);
+        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx, promptY);
       }
       ctx.restore();
     } else {
       // Game Complete Header
       ctx.save();
-      const headerY = canvas.height * 0.18 - posY;
+      const headerY = canvas.height * 0.16 - posY;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -671,7 +672,7 @@ export class MultiplayerBridge {
       // Scoreboard Banner Box
       const sbW = 240;
       const sbH = 50;
-      const sbY = centerY + 96;
+      const sbY = centerY + 88;
 
       ctx.fillStyle = '#000000';
       ctx.fillRect(cx - sbW / 2 + 4, sbY - sbH / 2 + 4, sbW, sbH);
@@ -692,14 +693,18 @@ export class MultiplayerBridge {
       ctx.fillStyle = '#ff007f';
       ctx.fillText(String(eScore), cx + 50, sbY + 1);
 
-      // Bottom Prompt
+      // Bottom Prompt (Positioned in the open gap at 0.70, completely above play button at 0.85)
       const time = performance.now();
       if (Math.floor(time / 500) % 2 === 0) {
         ctx.font = '700 10px "Press Start 2P", monospace';
+        const promptY = Math.round(canvas.height * 0.70);
+        const promptText = userWon
+          ? '► CLICK PLAY OR OPEN LOBBY ◄'
+          : '► CLICK REPLAY OR OPEN LOBBY ◄';
         ctx.fillStyle = '#000000';
-        ctx.fillText('► CLICK REPLAY OR OPEN LOBBY ◄', cx + 2, canvas.height * 0.82 + 2);
+        ctx.fillText(promptText, cx + 2, promptY + 2);
         ctx.fillStyle = '#ffe600';
-        ctx.fillText('► CLICK REPLAY OR OPEN LOBBY ◄', cx, canvas.height * 0.82);
+        ctx.fillText(promptText, cx, promptY);
       }
       ctx.restore();
     }
