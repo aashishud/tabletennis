@@ -3,12 +3,13 @@ import type { IncomingMessage, ServerResponse } from 'http';
 interface QueuedEnvelope {
   seq: number;
   msgId: string;
-  type: 'PEER_JOINED' | 'ROOM_JOINED' | 'SIGNAL' | 'PEER_LEFT' | 'ERROR';
+  type: 'PEER_JOINED' | 'ROOM_JOINED' | 'SIGNAL' | 'PEER_LEFT' | 'ERROR' | 'GAME_PACKET';
   roomCode: string;
   from?: 'host' | 'guest';
   playerInfo?: unknown;
   hostPlayerInfo?: unknown;
   signalData?: any;
+  packet?: any;
   message?: string;
 }
 
@@ -236,17 +237,14 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       const hostAlive = room && room.hostPlayer && now - room.hostLastSeen < HOST_STALE_MS;
 
       if (!room) {
-        // Provisional room in case warm lambda switched; Host's 400ms poll will self-heal it immediately
+        // Provisional room in case warm lambda switched; Host's poll will self-heal it immediately
         room = createEmptyRoom(roomCode);
       }
 
-      // Reset previous guest handshake if re-joining
       room.guestPlayer = body.playerInfo;
       room.guestLastSeen = now;
       room.guestJoinedAt = now;
       room.peerJoinedNotified = false;
-      room.cachedAnswer = undefined;
-      room.cachedGuestCandidates = [];
 
       if (hostAlive) {
         triggerHandshakeNotifications(room);
@@ -262,6 +260,9 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         roomCode,
         cursor,
         messages: initialMessages,
+        peerPlayerInfo: room.hostPlayer,
+        cachedPeerSdp: room.cachedOffer,
+        cachedPeerCandidates: room.cachedHostCandidates,
         pendingHostSync: !hostAlive,
       });
       return;
@@ -276,10 +277,10 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
 
       if (from === 'host') {
         room.hostLastSeen = now;
-        if (body.playerInfo && !room.hostPlayer) room.hostPlayer = body.playerInfo;
+        if (body.playerInfo) room.hostPlayer = body.playerInfo;
       } else {
         room.guestLastSeen = now;
-        if (body.playerInfo && !room.guestPlayer) room.guestPlayer = body.playerInfo;
+        if (body.playerInfo) room.guestPlayer = body.playerInfo;
       }
 
       const signalData = body.signalData;
@@ -290,6 +291,10 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       if (signalData?.candidate) {
         if (from === 'host') room.cachedHostCandidates.push(signalData.candidate);
         else room.cachedGuestCandidates.push(signalData.candidate);
+      }
+      if (Array.isArray(signalData?.candidates)) {
+        if (from === 'host') room.cachedHostCandidates = signalData.candidates;
+        else room.cachedGuestCandidates = signalData.candidates;
       }
 
       const env: QueuedEnvelope = {
@@ -329,6 +334,8 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         } else {
           room.guestPlayer = undefined;
           room.peerJoinedNotified = false;
+          room.cachedAnswer = undefined;
+          room.cachedGuestCandidates = [];
           room.messagesForHost.push(leaveEnv);
         }
         await saveRoom(room);
@@ -343,58 +350,70 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       let room = await loadRoom(roomCode);
 
       if (!room) {
-        if (role === 'host' && body.playerInfo) {
-          // Self-heal host room if serverless container recycled while waiting in lobby
+        if (body.playerInfo) {
+          // Self-heal room if serverless container recycled while waiting or handshaking
           room = createEmptyRoom(roomCode);
-          room.hostPlayer = body.playerInfo;
-          room.hostLastSeen = now;
-          await saveRoom(room);
-          sendJson(res, 200, { ok: true, cursor: 0, messages: [] });
+          if (role === 'host') {
+            room.hostPlayer = body.playerInfo;
+            room.hostLastSeen = now;
+          } else {
+            room.guestPlayer = body.playerInfo;
+            room.guestLastSeen = now;
+            room.guestJoinedAt = now;
+          }
+        } else {
+          sendJson(res, 200, {
+            ok: false,
+            cursor,
+            messages: [
+              {
+                seq: cursor + 1,
+                msgId: makeId('err'),
+                type: 'ERROR',
+                roomCode,
+                message: `Room ${roomCode} not found or host offline.`,
+              },
+            ],
+          });
           return;
         }
-        sendJson(res, 200, {
-          ok: false,
-          cursor,
-          messages: [
-            {
-              seq: cursor + 1,
-              msgId: makeId('err'),
-              type: 'ERROR',
-              roomCode,
-              message: `Room ${roomCode} not found or host offline.`,
-            },
-          ],
-        });
-        return;
       }
 
       let mutated = false;
 
       if (role === 'host') {
         room.hostLastSeen = now;
-        if (!room.hostPlayer && body.playerInfo) {
+        if (body.playerInfo && !room.hostPlayer) {
           room.hostPlayer = body.playerInfo;
           mutated = true;
         }
-        if (body.localSdp && !room.cachedOffer) {
+        if (body.localSdp) {
           room.cachedOffer = body.localSdp;
+          mutated = true;
+        }
+        if (Array.isArray(body.localCandidates) && body.localCandidates.length > room.cachedHostCandidates.length) {
+          room.cachedHostCandidates = body.localCandidates;
           mutated = true;
         }
       } else {
         room.guestLastSeen = now;
-        if (!room.guestPlayer && body.playerInfo) {
+        if (body.playerInfo && !room.guestPlayer) {
           room.guestPlayer = body.playerInfo;
           room.guestJoinedAt = room.guestJoinedAt || now;
           mutated = true;
         }
-        if (body.localSdp && !room.cachedAnswer) {
+        if (body.localSdp) {
           room.cachedAnswer = body.localSdp;
           mutated = true;
         }
+        if (Array.isArray(body.localCandidates) && body.localCandidates.length > room.cachedGuestCandidates.length) {
+          room.cachedGuestCandidates = body.localCandidates;
+          mutated = true;
+        }
 
-        // If Guest has been waiting > 4.5s and no Host has ever checked in, the room code doesn't exist
+        // If Guest has been waiting > 6.5s and no Host has ever checked in, the room code doesn't exist
         const hostPresent = room.hostPlayer && now - room.hostLastSeen < HOST_STALE_MS;
-        if (!hostPresent && room.guestJoinedAt && now - room.guestJoinedAt > 4500) {
+        if (!hostPresent && room.guestJoinedAt && now - room.guestJoinedAt > 6500) {
           await deleteRoom(roomCode);
           sendJson(res, 200, {
             ok: false,
@@ -413,13 +432,32 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         }
       }
 
+      // Forward any relay packets piggybacked on POLL (used when UDP WebRTC is blocked by firewall/NAT)
+      if (Array.isArray(body.packets) && body.packets.length > 0) {
+        const targetQueue = role === 'host' ? room.messagesForGuest : room.messagesForHost;
+        for (const pkt of body.packets) {
+          targetQueue.push({
+            seq: ++room.seqCounter,
+            msgId: makeId('pkt'),
+            type: 'GAME_PACKET',
+            roomCode,
+            from: role,
+            packet: pkt,
+          });
+        }
+        if (targetQueue.length > 80) {
+          targetQueue.splice(0, targetQueue.length - 80);
+        }
+        mutated = true;
+      }
+
       if (!room.peerJoinedNotified && room.hostPlayer && room.guestPlayer) {
         triggerHandshakeNotifications(room);
         mutated = true;
       }
 
       // Always persist updated heartbeat timestamps so the peer knows we're alive
-      if (mutated || now - room.updatedAt > 1500) {
+      if (mutated || now - room.updatedAt > 1200) {
         await saveRoom(room);
       } else {
         room.updatedAt = now;
@@ -433,6 +471,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         ok: true,
         cursor: nextCursor,
         messages: newMessages,
+        peerPlayerInfo: role === 'host' ? room.guestPlayer : room.hostPlayer,
         cachedPeerSdp: role === 'host' ? room.cachedAnswer : room.cachedOffer,
         cachedPeerCandidates: role === 'host' ? room.cachedGuestCandidates : room.cachedHostCandidates,
       });

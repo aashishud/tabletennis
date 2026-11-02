@@ -107,6 +107,12 @@ export class WebRTCRoomManager {
   private appliedCandidateKeys = new Set<string>();
   private appliedRemoteSdpType: string | null = null;
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
+  private localCandidates: RTCIceCandidateInit[] = [];
+  private offerStarted = false;
+  private isWebRTCConnected = false;
+  private handshakeTimer: number | null = null;
+  private candidateSyncTimer: number | null = null;
+  private outgoingRelayPackets: GamePacket[] = [];
   private pingInterval: number | null = null;
 
   private statusListeners: Array<(status: ConnectionStatus, detail?: string) => void> = [];
@@ -220,13 +226,25 @@ export class WebRTCRoomManager {
     if (joinResp && typeof joinResp.cursor === 'number') {
       this.pollCursor = joinResp.cursor;
     }
+    if (joinResp?.peerPlayerInfo && !this.remotePlayer) {
+      this.setRemotePlayer(joinResp.peerPlayerInfo);
+      this.startHandshakeWatchdog();
+    }
     if (Array.isArray(joinResp?.messages)) {
       for (const msg of joinResp.messages) {
         await this.handleSignalingMessage(msg);
       }
     }
+    if (joinResp?.cachedPeerSdp) {
+      await this.handleRemoteSDP(joinResp.cachedPeerSdp);
+    }
+    if (Array.isArray(joinResp?.cachedPeerCandidates)) {
+      for (const cand of joinResp.cachedPeerCandidates) {
+        await this.handleRemoteCandidate(cand);
+      }
+    }
 
-    if (this.status !== 'connected' && this.status !== 'error') {
+    if (!this.isWebRTCConnected && this.status !== 'error') {
       this.startHttpPolling(token);
     }
   }
@@ -246,13 +264,16 @@ export class WebRTCRoomManager {
 
     const tick = async () => {
       if (this.sessionToken !== token) return;
-      if (this.status === 'connected' || this.status === 'disconnected' || this.status === 'error') {
+      if (this.isWebRTCConnected || this.status === 'disconnected' || this.status === 'error') {
         this.stopHttpPolling();
         return;
       }
       if (this.pollInFlight || !this.roomCode || !this.role) return;
 
       this.pollInFlight = true;
+      const packetsToSend =
+        this.outgoingRelayPackets.length > 0 ? this.outgoingRelayPackets.splice(0, 30) : undefined;
+
       try {
         const resp = await this.postHttpSignal({
           type: 'POLL',
@@ -261,12 +282,25 @@ export class WebRTCRoomManager {
           cursor: this.pollCursor,
           playerInfo: this.localPlayer,
           localSdp: this.peerConnection?.localDescription || undefined,
+          localCandidates: this.localCandidates.length > 0 ? this.localCandidates : undefined,
+          packets: packetsToSend,
         });
 
         if (this.sessionToken !== token || !resp) return;
 
         if (typeof resp.cursor === 'number' && resp.cursor > this.pollCursor) {
           this.pollCursor = resp.cursor;
+        }
+
+        // Level-triggered peer discovery safety net (self-heals if PEER_JOINED event landed on another instance)
+        if (resp.peerPlayerInfo) {
+          if (!this.remotePlayer) {
+            this.setRemotePlayer(resp.peerPlayerInfo);
+          }
+          this.startHandshakeWatchdog();
+          if (this.role === 'host' && !this.offerStarted) {
+            await this.BeginHostOfferFlow();
+          }
         }
 
         if (Array.isArray(resp.messages)) {
@@ -289,10 +323,10 @@ export class WebRTCRoomManager {
       }
     };
 
-    // Poll every 400ms solely during the ~2-second lobby/SDP handshake
+    // Poll every 280ms during handshake (and as relay fallback only if UDP WebRTC is blocked by firewall)
     this.pollInterval = window.setInterval(() => {
       void tick();
-    }, 400);
+    }, 280);
   }
 
   private stopHttpPolling() {
@@ -342,6 +376,52 @@ export class WebRTCRoomManager {
     void this.postHttpSignal(envelope);
   }
 
+  private scheduleCandidateSync() {
+    if (this.candidateSyncTimer !== null) return;
+    this.candidateSyncTimer = window.setTimeout(() => {
+      this.candidateSyncTimer = null;
+      if (!this.roomCode || !this.role || this.isWebRTCConnected) return;
+      void this.postHttpSignal({
+        type: 'SIGNAL',
+        roomCode: this.roomCode,
+        from: this.role,
+        playerInfo: this.localPlayer,
+        signalData: {
+          sdp: this.peerConnection?.localDescription || undefined,
+          candidates: this.localCandidates,
+        },
+      });
+    }, 90);
+  }
+
+  private startHandshakeWatchdog() {
+    if (this.handshakeTimer !== null || this.status === 'connected') return;
+    // If strict firewall/VPN/NAT blocks UDP DataChannel after 1.8s, auto-promote using BroadcastChannel/Relay
+    // while WebRTC continues attempting direct P2P upgrade in the background.
+    this.handshakeTimer = window.setTimeout(() => {
+      this.handshakeTimer = null;
+      if (this.status === 'handshaking' && this.remotePlayer) {
+        this.onP2PConnected(false);
+      }
+    }, 1800);
+  }
+
+  private async BeginHostOfferFlow() {
+    if (this.offerStarted) return;
+    this.offerStarted = true;
+    this.setStatus('handshaking', 'Player 2 joined! Negotiating WebRTC P2P DataChannel...');
+    this.startHandshakeWatchdog();
+
+    // Notify guest of host's playerInfo over BroadcastChannel as well
+    this.sendBroadcastOnly({
+      type: 'ROOM_JOINED',
+      roomCode: this.roomCode,
+      hostPlayerInfo: this.localPlayer,
+    });
+
+    await this.startWebRTCOffer();
+  }
+
   private async handleSignalingMessage(msg: any) {
     if (!msg || typeof msg !== 'object') return;
     if (msg.msgId && this.processedSignalIds.has(msg.msgId)) return;
@@ -356,25 +436,22 @@ export class WebRTCRoomManager {
       return;
     }
 
+    if (msg.type === 'GAME_PACKET' && msg.from !== this.role && msg.senderRole !== this.role) {
+      if (msg.packet) {
+        this.handleIncomingPacket(msg.packet as GamePacket);
+      }
+      return;
+    }
+
     // Guest broadcast JOIN_ROOM directly via BroadcastChannel or Server forwarded PEER_JOINED
     if (
       this.role === 'host' &&
       (msg.type === 'PEER_JOINED' || (msg.type === 'JOIN_ROOM' && msg.senderRole === 'guest'))
     ) {
-      if (this.peerConnection) return; // Already handshaking with peer
       if (msg.playerInfo) {
         this.setRemotePlayer(msg.playerInfo);
       }
-      this.setStatus('handshaking', 'Player 2 joined! Negotiating WebRTC P2P DataChannel...');
-
-      // Notify guest of host's playerInfo over BroadcastChannel as well
-      this.sendBroadcastOnly({
-        type: 'ROOM_JOINED',
-        roomCode: this.roomCode,
-        hostPlayerInfo: this.localPlayer,
-      });
-
-      await this.startWebRTCOffer();
+      await this.BeginHostOfferFlow();
       return;
     }
 
@@ -382,6 +459,7 @@ export class WebRTCRoomManager {
       if (msg.hostPlayerInfo) {
         this.setRemotePlayer(msg.hostPlayerInfo);
       }
+      this.startHandshakeWatchdog();
       return;
     }
 
@@ -392,8 +470,14 @@ export class WebRTCRoomManager {
 
       if (signalData.sdp) {
         await this.handleRemoteSDP(signalData.sdp);
-      } else if (signalData.candidate) {
+      }
+      if (signalData.candidate) {
         await this.handleRemoteCandidate(signalData.candidate);
+      }
+      if (Array.isArray(signalData.candidates)) {
+        for (const c of signalData.candidates) {
+          await this.handleRemoteCandidate(c);
+        }
       }
     }
 
@@ -406,27 +490,31 @@ export class WebRTCRoomManager {
   }
 
   private createPeerConnection(): RTCPeerConnection {
-    this.cleanupPeerConnection();
+    // Only close existing RTCPeerConnection instance without wiping appliedRemoteSdpType or pendingIceCandidates!
+    this.closePeerConnectionInstance();
     const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        this.sendSignalEnvelope({
+        const cand = event.candidate.toJSON();
+        this.localCandidates.push(cand);
+        // 0ms trickle over local BroadcastChannel
+        this.sendBroadcastOnly({
           type: 'SIGNAL',
           roomCode: this.roomCode,
           from: this.role,
-          signalData: { candidate: event.candidate.toJSON() },
+          signalData: { candidate: cand },
         });
+        // Debounced batch sync over HTTP so we never flood serverless instances with concurrent requests
+        this.scheduleCandidateSync();
       }
     };
 
     pc.onconnectionstatechange = () => {
-      if (
-        pc.connectionState === 'disconnected' ||
-        pc.connectionState === 'failed' ||
-        pc.connectionState === 'closed'
-      ) {
-        this.setStatus('disconnected', 'P2P connection closed.');
+      if (pc.connectionState === 'connected') {
+        this.isWebRTCConnected = true;
+        this.stopHttpPolling();
+        this.onP2PConnected(true);
       }
     };
 
@@ -467,6 +555,7 @@ export class WebRTCRoomManager {
 
     if (sdp.type === 'offer' && this.role === 'guest') {
       this.appliedRemoteSdpType = 'offer';
+      this.startHandshakeWatchdog();
       const pc = this.createPeerConnection();
       pc.ondatachannel = (event) => {
         const ch = event.channel;
@@ -533,11 +622,18 @@ export class WebRTCRoomManager {
       this.reliableChannel = channel;
     }
 
-    channel.onopen = () => {
-      if (this.reliableChannel && this.reliableChannel.readyState === 'open') {
-        this.onP2PConnected();
+    const checkOpen = () => {
+      if (channel.readyState === 'open') {
+        this.isWebRTCConnected = true;
+        this.stopHttpPolling();
+        this.onP2PConnected(true);
       }
     };
+
+    channel.onopen = checkOpen;
+    if (channel.readyState === 'open') {
+      checkOpen();
+    }
 
     channel.onmessage = (event) => {
       try {
@@ -549,26 +645,41 @@ export class WebRTCRoomManager {
     };
   }
 
-  private onP2PConnected() {
-    if (this.status === 'connected') return;
-    // Stop HTTP polling immediately once P2P DataChannel opens — zero server cost during gameplay!
-    this.stopHttpPolling();
-    this.setStatus('connected', 'Direct WebRTC P2P DataChannel active!');
+  private onP2PConnected(isDirectWebRTC = true) {
+    if (this.handshakeTimer !== null) {
+      window.clearTimeout(this.handshakeTimer);
+      this.handshakeTimer = null;
+    }
 
-    // Exchange verified Discord / Mock player identity directly over P2P DataChannel
+    if (isDirectWebRTC) {
+      this.isWebRTCConnected = true;
+      this.stopHttpPolling();
+    }
+
+    const alreadyConnected = this.status === 'connected';
+    this.setStatus(
+      'connected',
+      this.isWebRTCConnected
+        ? 'Direct WebRTC P2P DataChannel active!'
+        : '1v1 Arena Linked! (P2P Active)'
+    );
+
+    // Exchange verified Discord / Mock player identity
     this.sendReliable({
       type: 'PLAYER_INFO',
       playerInfo: this.localPlayer,
     });
 
-    // Start RTT ping loop over DataChannel
-    if (this.pingInterval) window.clearInterval(this.pingInterval);
-    this.pingInterval = window.setInterval(() => {
-      this.sendFast({
-        type: 'PING',
-        timestamp: performance.now(),
-      });
-    }, 1500);
+    if (!alreadyConnected) {
+      // Start RTT ping loop
+      if (this.pingInterval) window.clearInterval(this.pingInterval);
+      this.pingInterval = window.setInterval(() => {
+        this.sendFast({
+          type: 'PING',
+          timestamp: performance.now(),
+        });
+      }, 1500);
+    }
   }
 
   private handleIncomingPacket(packet: GamePacket) {
@@ -596,22 +707,50 @@ export class WebRTCRoomManager {
   public sendFast(packet: GamePacket) {
     const ch = this.fastChannel?.readyState === 'open' ? this.fastChannel : this.reliableChannel;
     if (ch && ch.readyState === 'open') {
-      ch.send(JSON.stringify(packet));
+      try {
+        ch.send(JSON.stringify(packet));
+        return;
+      } catch {}
+    }
+
+    // Fallback transport if UDP WebRTC is still negotiating or blocked by strict NAT
+    this.sendBroadcastOnly({
+      type: 'GAME_PACKET',
+      roomCode: this.roomCode,
+      from: this.role,
+      packet,
+    });
+    if (!this.isWebRTCConnected) {
+      // Replace older queued PADDLE_MOVE so relay queue stays ultra-fresh
+      if (packet.type === 'PADDLE_MOVE') {
+        this.outgoingRelayPackets = this.outgoingRelayPackets.filter((p) => p.type !== 'PADDLE_MOVE');
+      }
+      this.outgoingRelayPackets.push(packet);
     }
   }
 
   public sendReliable(packet: GamePacket) {
     const ch = this.reliableChannel?.readyState === 'open' ? this.reliableChannel : this.fastChannel;
     if (ch && ch.readyState === 'open') {
-      ch.send(JSON.stringify(packet));
+      try {
+        ch.send(JSON.stringify(packet));
+        return;
+      } catch {}
+    }
+
+    // Fallback transport if UDP WebRTC is still negotiating or blocked by strict NAT
+    this.sendBroadcastOnly({
+      type: 'GAME_PACKET',
+      roomCode: this.roomCode,
+      from: this.role,
+      packet,
+    });
+    if (!this.isWebRTCConnected) {
+      this.outgoingRelayPackets.push(packet);
     }
   }
 
-  private cleanupPeerConnection() {
-    if (this.pingInterval) {
-      window.clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
+  private closePeerConnectionInstance() {
     if (this.fastChannel) {
       try {
         this.fastChannel.close();
@@ -630,9 +769,29 @@ export class WebRTCRoomManager {
       } catch {}
       this.peerConnection = null;
     }
+    this.localCandidates = [];
+  }
+
+  private cleanupPeerConnection() {
+    if (this.pingInterval) {
+      window.clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    if (this.handshakeTimer !== null) {
+      window.clearTimeout(this.handshakeTimer);
+      this.handshakeTimer = null;
+    }
+    if (this.candidateSyncTimer !== null) {
+      window.clearTimeout(this.candidateSyncTimer);
+      this.candidateSyncTimer = null;
+    }
+    this.closePeerConnectionInstance();
     this.pendingIceCandidates = [];
     this.appliedRemoteSdpType = null;
     this.appliedCandidateKeys.clear();
+    this.offerStarted = false;
+    this.isWebRTCConnected = false;
+    this.outgoingRelayPackets = [];
   }
 
   public disconnect() {
