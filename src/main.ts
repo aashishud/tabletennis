@@ -21,7 +21,6 @@ async function bootstrapMultiplayerApp() {
   const params = new URLSearchParams(window.location.search);
   const roomParam = params.get('room');
   if (roomParam && roomParam.trim().length >= 4) {
-    ui.openModal();
     await net.joinRoom(roomParam.trim().toUpperCase());
   }
 }

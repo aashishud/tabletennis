@@ -148,6 +148,44 @@
   line-height: 1;
 }
 
+.ttwt-hud-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  background: #140d2b;
+  border: 2px solid var(--pp-cyan);
+  border-radius: 10px;
+  box-shadow: 2px 2px 0px #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+  user-select: none;
+}
+
+.ttwt-hud-invite-btn:hover {
+  background: var(--pp-cyan);
+  color: #000;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px #000;
+}
+
+.ttwt-hud-invite-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #000;
+}
+
+.ttwt-invite-code {
+  color: var(--pp-yellow);
+  font-weight: 900;
+}
+
+.ttwt-hud-invite-btn:hover .ttwt-invite-code {
+  color: #000;
+}
+
 .ttwt-dot {
   width: 7px;
   height: 7px;
@@ -530,10 +568,272 @@
   padding-top: 10px;
 }
 
+/* 🏳️ Top-Right Forfeit Bar */
+.ttwt-top-right-bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.ttwt-forfeit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #2a0f20;
+  border: 2.5px solid #ff0055;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0px #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+  user-select: none;
+}
+
+.ttwt-forfeit-btn:hover {
+  background: #ff0055;
+  color: #000;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px #000;
+}
+
+.ttwt-forfeit-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #000;
+}
+
+/* 🎮 First Page Retro Mode Dock */
+.ttwt-mode-dock {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
+  max-width: 660px;
+  z-index: 90;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.ttwt-mode-dock-bar {
+  width: 100%;
+  background: rgba(20, 13, 40, 0.95);
+  border: 3.5px solid var(--pp-border);
+  border-radius: 20px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.75), 5px 5px 0px #000;
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.ttwt-mode-dock-badge {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--pp-cyan);
+  text-shadow: 1px 1px 0px #000;
+  letter-spacing: 0.08em;
+}
+
+.ttwt-mode-cards-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.ttwt-mode-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14px 8px 12px;
+  border-radius: 14px;
+  border: 3px solid var(--pp-border);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  font-family: inherit;
+}
+
+.ttwt-mode-card-1v1 {
+  background: linear-gradient(180deg, #2b1d52 0%, #170d30 100%);
+  border-color: var(--pp-yellow);
+  box-shadow: 4px 4px 0px #000;
+}
+
+.ttwt-mode-card-1v1:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px #000;
+  border-color: #fff;
+}
+
+.ttwt-mode-card-1v1:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #000;
+}
+
+.ttwt-mode-card-locked {
+  background: rgba(23, 16, 43, 0.7);
+  border-color: #3b305c;
+  opacity: 0.75;
+}
+
+.ttwt-mode-card-locked:hover {
+  opacity: 0.95;
+  border-color: var(--pp-pink);
+}
+
+.ttwt-card-tag {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 2px 6px;
+  background: var(--pp-yellow);
+  color: #000;
+  border: 1.5px solid #000;
+  border-radius: 6px;
+  font-weight: 900;
+}
+
+.ttwt-card-tag.soon {
+  background: var(--pp-pink);
+  color: #fff;
+}
+
+.ttwt-card-icon {
+  font-size: 26px;
+  margin-bottom: 6px;
+}
+
+.ttwt-card-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: #fff;
+  text-shadow: 1px 1px 0px #000;
+  margin-bottom: 4px;
+}
+
+.ttwt-mode-card-1v1 .ttwt-card-title {
+  color: var(--pp-yellow);
+}
+
+.ttwt-card-desc {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--pp-text-muted);
+  line-height: 1.25;
+  margin-bottom: 8px;
+  min-height: 22px;
+}
+
+.ttwt-card-action {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 4px 8px;
+  background: var(--pp-cyan);
+  color: #000;
+  border: 1.5px solid #000;
+  border-radius: 6px;
+  font-weight: 900;
+}
+
+.ttwt-card-action.locked {
+  background: #332652;
+  color: #8f85b0;
+  border-color: #000;
+}
+
+.ttwt-quick-join-dock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 2px dashed #2f2352;
+  flex-wrap: wrap;
+}
+
+.ttwt-quick-join-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--pp-text-muted);
+}
+
+.ttwt-quick-join-field {
+  background: #0d061e;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: var(--pp-yellow);
+  outline: none;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  width: 130px;
+  box-shadow: inset 2px 2px 0px #000;
+}
+
+.ttwt-quick-join-field:focus {
+  border-color: var(--pp-cyan);
+}
+
+.ttwt-dock-join-btn {
+  padding: 7px 12px;
+  font-size: 9px;
+}
+
+/* 🍞 Retro Toast Notification */
+.ttwt-retro-toast {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--pp-yellow);
+  color: #000;
+  border: 3px solid #000;
+  border-radius: 12px;
+  box-shadow: 4px 4px 0px #000;
+  padding: 10px 18px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  text-align: center;
+  line-height: 1.4;
+  z-index: 100000;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.ttwt-retro-toast.fade-out {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+}
+
 @media (max-width: 640px) {
   .ttwt-hud-bar {
     top: 8px;
     left: 8px;
+  }
+  .ttwt-top-right-bar {
+    top: 8px;
+    right: 8px;
   }
   .ttwt-hud-compact-btn {
     padding: 4px 8px 4px 5px;
@@ -541,5 +841,23 @@
   }
   .ttwt-hud-player-chip {
     display: none;
+  }
+  .ttwt-hud-invite-btn {
+    padding: 4px 7px;
+    font-size: 7px;
+  }
+  .ttwt-invite-label {
+    display: none;
+  }
+  .ttwt-mode-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .ttwt-mode-card-locked {
+    display: none;
+  }
+  .ttwt-mode-dock {
+    bottom: 12px;
+    width: 95%;
   }
 }

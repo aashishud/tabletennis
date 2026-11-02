@@ -3222,26 +3222,17 @@ function initStartScreen() {
     if(audioType == 1) {
     }
 
-    var oPlayBut = {
-        oImgData: assetLib.getData("uiButs"),
-        aPos: [
-            0,
-            0
-        ],
-        align: [
-            .5,
-            .85
-        ],
-        id: oImageIds.playBut
-    };
-    userInput.addHitArea("playFromStart", butEventHandler, null, "image", oPlayBut);
-
-    var aButs = new Array(oPlayBut);
+    var aButs = new Array();
     addMuteBut(aButs);
     panel = new Elements.Panel(gameState, aButs);
     panel.startTween1();
     previousTime = new Date().getTime();
     updateStartScreenEvent();
+
+    window.initStartScreen = initStartScreen;
+    if(window.TTWTMultiplayer && window.TTWTMultiplayer.onGameStateChange) {
+        window.TTWTMultiplayer.onGameStateChange("start");
+    }
 
     window.famobi.gameReady();
 }
@@ -3515,6 +3506,9 @@ function initMapScreen() {
 }
 function initGameIntro() {
     gameState = "gameIntro";
+    if(window.TTWTMultiplayer && window.TTWTMultiplayer.onGameStateChange) {
+        window.TTWTMultiplayer.onGameStateChange("gameIntro");
+    }
     try  {
         (window).famobi_analytics.trackScreen(famobi_analytics.SCREEN_LEVELINTRO);
     } catch (e) {
@@ -3574,6 +3568,9 @@ function _initGame() {
     window.famobi_analytics.trackStats("country_opponent", countryFlags.aAllCountryCodes[oGameData.enemyId]);
 
     gameState = "game";
+    if(window.TTWTMultiplayer && window.TTWTMultiplayer.onGameStateChange) {
+        window.TTWTMultiplayer.onGameStateChange("game");
+    }
     if(hasLockPointer)
     {
       if(!window.famobi.pointerLockHelper)window.famobi.pointerLockHelper = {};
@@ -3661,6 +3658,9 @@ function _initGame() {
 }
 function initPause() {
     gameState = "pause";
+    if(window.TTWTMultiplayer && window.TTWTMultiplayer.onGameStateChange) {
+        window.TTWTMultiplayer.onGameStateChange("pause");
+    }
     try  {
         (window).famobi_analytics.trackScreen(famobi_analytics.SCREEN_PAUSE);
     } catch (e) {
@@ -4343,6 +4343,9 @@ function initGameComplete() {
 function _initGameComplete() {
   if(window.famobi.pointerLockHelper) userInput.unlockPointer();
     gameState = "gameComplete";
+    if(window.TTWTMultiplayer && window.TTWTMultiplayer.onGameStateChange) {
+        window.TTWTMultiplayer.onGameStateChange("gameComplete");
+    }
     if(audioType == 1) {
         music.fade(music.volume(), .5, 500);
     }

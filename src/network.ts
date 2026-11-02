@@ -44,11 +44,12 @@ export interface PointResultPacket {
 }
 
 export interface MatchControlPacket {
-  type: 'MATCH_START' | 'MATCH_REMATCH' | 'PLAYER_INFO' | 'PING' | 'PONG';
+  type: 'MATCH_START' | 'MATCH_REMATCH' | 'MATCH_FORFEIT' | 'PLAYER_INFO' | 'PING' | 'PONG';
   playerInfo?: PlayerIdentity;
   timestamp?: number;
   cupId?: number;
   gameId?: number;
+  by?: string | null;
 }
 
 export interface PeerPausedPacket {

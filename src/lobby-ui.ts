@@ -8,6 +8,7 @@ export class LobbyOverlayUI {
   private net: WebRTCRoomManager;
   private bridge: MultiplayerBridge;
   private modalOpen = false;
+  private currentGameState = 'start';
   private statusText = 'READY PLAYER 1 — 1V1 RETRO ARCADE';
 
   constructor(auth: DiscordAuthManager, net: WebRTCRoomManager, bridge: MultiplayerBridge) {
@@ -22,6 +23,11 @@ export class LobbyOverlayUI {
       document.body.appendChild(existing);
     }
     this.root = existing;
+
+    this.bridge.registerGameStateListener((state) => {
+      this.currentGameState = state;
+      this.render();
+    });
 
     this.auth.onChange((user) => {
       this.net.setLocalPlayer(user);
@@ -71,24 +77,100 @@ export class LobbyOverlayUI {
     const isWaiting = this.net.status === 'waiting_for_peer' || this.net.status === 'handshaking';
     const remote = this.net.remotePlayer;
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRoom = urlParams.get('room')?.toUpperCase().trim() || '';
+    const activeRoomCode = this.net.roomCode || urlRoom;
+
     this.root.innerHTML = `
       <!-- 🕹️ Top-Left Retro Arcade HUD (Compact & Non-Obstructive) -->
       <div class="ttwt-hud-bar" id="ttwt-hud-bar">
-        <button class="ttwt-hud-compact-btn" id="ttwt-open-lobby-btn" title="Open PONGPONG 1v1 Lobby (Esc to close)">
+        <button class="ttwt-hud-compact-btn" id="ttwt-open-lobby-btn" title="Player Settings & Discord Login (Esc)">
           <span class="ttwt-hud-player-chip">1P</span>
           <img class="ttwt-hud-mini-avatar" src="${user.avatarUrl}" alt="${user.displayName}" />
-          <span class="ttwt-hud-compact-title">🕹️ LOBBY</span>
+          <span class="ttwt-hud-compact-title">${this.escapeHtml(user.displayName).slice(0, 8)}</span>
           <span class="ttwt-hud-status-badge ${isConnected ? 'p2p' : isWaiting ? 'waiting' : 'bot'}">
-            <span class="ttwt-dot ${isConnected || isWaiting ? 'ttwt-dot-pulse' : ''}"></span>
+            <span class="ttwt-dot ${isConnected ? '' : 'ttwt-dot-pulse'}"></span>
             <span class="ttwt-status-text">${
               isConnected
                 ? `${this.net.rttMs || 1}MS`
-                : isWaiting
-                ? 'ROOM'
-                : 'BOT'
+                : this.net.roomCode
+                ? `RM:${this.net.roomCode}`
+                : 'SOLO'
             }</span>
           </span>
         </button>
+
+        ${
+          this.net.roomCode
+            ? `
+          <button class="ttwt-hud-invite-btn" id="ttwt-hud-invite-btn" title="Click to copy invite link">
+            <span class="ttwt-invite-icon">🔗</span>
+            <span class="ttwt-invite-label">INVITE</span>
+            <span class="ttwt-invite-code">${this.net.roomCode}</span>
+          </button>
+        `
+            : ''
+        }
+      </div>
+
+      <!-- 🏳️ Top-Right Forfeit / Exit Button (Visible during gameplay) -->
+      <div class="ttwt-top-right-bar ${this.currentGameState === 'game' ? '' : 'ttwt-hidden'}" id="ttwt-top-right-bar">
+        <button class="ttwt-forfeit-btn" id="ttwt-forfeit-btn" title="Forfeit match and exit to menu">
+          <span class="ttwt-forfeit-icon">🏳️</span>
+          <span class="ttwt-forfeit-text">FORFEIT</span>
+        </button>
+      </div>
+
+      <!-- 🎮 First Page Retro Mode Dock (Visible on Start Screen) -->
+      <div class="ttwt-mode-dock ${this.currentGameState === 'start' ? '' : 'ttwt-hidden'}" id="ttwt-mode-dock">
+        <div class="ttwt-mode-dock-bar">
+          <div class="ttwt-mode-dock-badge">★ SELECT ARCADE MODE ★</div>
+
+          <div class="ttwt-mode-cards-grid">
+            <!-- 🏓 1V1 MODE (PRIMARY) -->
+            <button class="ttwt-mode-card ttwt-mode-card-1v1" id="ttwt-launch-1v1-btn">
+              <div class="ttwt-card-tag">AUTO-ROOM</div>
+              <div class="ttwt-card-icon">🏓</div>
+              <div class="ttwt-card-title">1V1 BRAWL</div>
+              <div class="ttwt-card-desc">${activeRoomCode ? `JOIN ROOM ${activeRoomCode}` : 'PLAY VS BOT • DROP-IN 1V1'}</div>
+              <div class="ttwt-card-action">► INSERT COIN ◄</div>
+            </button>
+
+            <!-- 👥 2V2 MODE (SOON) -->
+            <button class="ttwt-mode-card ttwt-mode-card-locked" id="ttwt-launch-2v2-btn" title="Coming soon!">
+              <div class="ttwt-card-tag soon">SOON</div>
+              <div class="ttwt-card-icon">👥</div>
+              <div class="ttwt-card-title">2V2 DOUBLES</div>
+              <div class="ttwt-card-desc">CO-OP TEAMS & SPLIT TABLE</div>
+              <div class="ttwt-card-action locked">LOCKED</div>
+            </button>
+
+            <!-- 💥 4V4 MODE (SOON) -->
+            <button class="ttwt-mode-card ttwt-mode-card-locked" id="ttwt-launch-4v4-btn" title="Coming soon!">
+              <div class="ttwt-card-tag soon">SOON</div>
+              <div class="ttwt-card-icon">💥</div>
+              <div class="ttwt-card-title">4V4 CHAOS</div>
+              <div class="ttwt-card-desc">MULTI-BALL MAYHEM</div>
+              <div class="ttwt-card-action locked">LOCKED</div>
+            </button>
+          </div>
+
+          <!-- Quick Join With Room Code Row -->
+          <div class="ttwt-quick-join-dock">
+            <span class="ttwt-quick-join-label">HAVE A CODE?</span>
+            <input
+              type="text"
+              class="ttwt-quick-join-field"
+              id="ttwt-dock-join-code-input"
+              placeholder="6-CHAR CODE"
+              maxlength="6"
+              value="${activeRoomCode}"
+            />
+            <button class="ttwt-btn ttwt-btn-cyan ttwt-dock-join-btn" id="ttwt-dock-join-btn">
+              JOIN MATCH
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- 👾 Retro Arcade Cabinet Lobby Modal -->
@@ -368,6 +450,98 @@ export class LobbyOverlayUI {
       this.statusText = 'SWITCHED TO BOT MODE.';
       this.render();
     });
+
+    // 🏓 1v1 Launch Button on First Page
+    document.getElementById('ttwt-launch-1v1-btn')?.addEventListener('click', async () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit0');
+      }
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRoom = urlParams.get('room')?.toUpperCase().trim();
+
+      if (urlRoom && (!this.net.roomCode || this.net.role === 'guest')) {
+        await this.net.joinRoom(urlRoom);
+      } else if (!this.net.roomCode) {
+        // Auto-create room for seamless drop-in
+        const code = await this.net.createRoom();
+        window.history.replaceState(null, '', `?room=${code}`);
+      }
+
+      this.bridge.start1v1Match();
+    });
+
+    // 👥 2V2 & 💥 4V4 Coming Soon Buttons
+    const showSoonNotice = (modeName: string) => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit3');
+      }
+      this.showToast(`👥 ${modeName} COMING SOON!\nPLAY 1V1 BRAWL FOR NOW!`);
+    };
+
+    document.getElementById('ttwt-launch-2v2-btn')?.addEventListener('click', () => {
+      showSoonNotice('2V2 DOUBLES');
+    });
+
+    document.getElementById('ttwt-launch-4v4-btn')?.addEventListener('click', () => {
+      showSoonNotice('4V4 CHAOS');
+    });
+
+    // 🏳️ Forfeit / Exit Button (during game)
+    document.getElementById('ttwt-forfeit-btn')?.addEventListener('click', () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit2');
+      }
+      this.bridge.forfeitOrExitMatch();
+    });
+
+    // 🔗 Copy Invite Link in HUD
+    document.getElementById('ttwt-hud-invite-btn')?.addEventListener('click', () => {
+      if (!this.net.roomCode) return;
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${this.net.roomCode}`;
+      navigator.clipboard.writeText(inviteUrl).then(() => {
+        this.showToast(`✓ INVITE LINK COPIED:\n${this.net.roomCode}`);
+      }).catch(() => {
+        this.showToast(`ROOM CODE: ${this.net.roomCode}`);
+      });
+    });
+
+    // Quick Join on Start Screen
+    const dockJoinInput = document.getElementById('ttwt-dock-join-code-input') as HTMLInputElement | null;
+    const handleDockJoin = async () => {
+      const code = dockJoinInput?.value.trim().toUpperCase() || '';
+      if (code.length < 4) {
+        this.showToast('ENTER VALID 6-CHAR CODE!');
+        return;
+      }
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit0');
+      }
+      await this.net.joinRoom(code);
+      window.history.replaceState(null, '', `?room=${code}`);
+      this.bridge.start1v1Match();
+    };
+
+    document.getElementById('ttwt-dock-join-btn')?.addEventListener('click', handleDockJoin);
+    dockJoinInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleDockJoin();
+    });
+  }
+
+  public showToast(msg: string) {
+    const existing = document.getElementById('ttwt-retro-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'ttwt-retro-toast';
+    toast.className = 'ttwt-retro-toast';
+    toast.innerText = msg;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.remove(), 350);
+    }, 2200);
   }
 
   private escapeHtml(str: string): string {

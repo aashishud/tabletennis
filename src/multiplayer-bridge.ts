@@ -23,6 +23,7 @@ declare global {
     rallyHits: number;
     initGame: (restart?: boolean) => void;
     _initGame: () => void;
+    initStartScreen?: () => void;
     updateScore: (winner: 'user' | 'enemy') => void;
     initGameComplete: () => void;
     playSound: (id: string) => void;
@@ -99,6 +100,66 @@ export class MultiplayerBridge {
         window.enemyBat.flailInc = 0;
         window.enemyBat.slideInc = 0;
       }
+    }
+  }
+
+  private gameStateListeners: Array<(state: string) => void> = [];
+
+  public onGameStateChange(state: string) {
+    for (const cb of this.gameStateListeners) {
+      cb(state);
+    }
+  }
+
+  public registerGameStateListener(cb: (state: string) => void) {
+    this.gameStateListeners.push(cb);
+  }
+
+  /**
+   * Starts a 1v1 match immediately. If Player 2 is already connected, starts in NETWORK_MODE.
+   * If alone, starts in BOT_MODE so the player can play instantly, while the room stays ready
+   * in the background for a friend to drop in anytime!
+   */
+  public start1v1Match() {
+    window.firstRun = false;
+    if (this.net.status === 'connected') {
+      this.startMultiplayerMatch(true);
+    } else {
+      this.setMode('BOT_MODE');
+      if (typeof window._initGame === 'function') {
+        window._initGame();
+      } else if (typeof window.initGame === 'function') {
+        window.initGame(true);
+      }
+    }
+  }
+
+  /**
+   * Forfeits the current match and exits to the main menu start screen.
+   * In multiplayer, sends a MATCH_FORFEIT packet so the opponent is awarded the win.
+   */
+  public forfeitOrExitMatch() {
+    if (this.mode === 'NETWORK_MODE' && this.net.status === 'connected') {
+      this.net.sendReliable({
+        type: 'MATCH_FORFEIT',
+        by: this.net.role,
+      });
+      if (window.oGameData) {
+        window.oGameData.userScore = Math.min(window.oGameData.userScore || 0, 10);
+        window.oGameData.enemyScore = 11;
+      }
+      if (typeof window.initGameComplete === 'function') {
+        window.initGameComplete();
+      } else if (typeof window.initStartScreen === 'function') {
+        window.initStartScreen();
+      }
+      return;
+    }
+
+    // In single player vs Bot:
+    this.setMode('BOT_MODE');
+    if (typeof window.initStartScreen === 'function') {
+      window.initStartScreen();
     }
   }
 
@@ -292,6 +353,18 @@ export class MultiplayerBridge {
   private handlePacket(packet: GamePacket) {
     if (packet.type === 'MATCH_START' || packet.type === 'MATCH_REMATCH') {
       this.startMultiplayerMatch(false);
+      return;
+    }
+
+    if (packet.type === 'MATCH_FORFEIT') {
+      // Opponent forfeited! Local player automatically wins match!
+      if (window.oGameData) {
+        window.oGameData.userScore = 11;
+        window.oGameData.enemyScore = Math.min(window.oGameData.enemyScore || 0, 10);
+      }
+      if (typeof window.initGameComplete === 'function') {
+        window.initGameComplete();
+      }
       return;
     }
 
@@ -499,9 +572,9 @@ export class MultiplayerBridge {
     if (blink) {
       ctx.font = '700 11px "Press Start 2P", monospace';
       ctx.fillStyle = '#000000';
-      ctx.fillText('► PRESS PLAY OR OPEN 1V1 LOBBY ◄', cx + 2, cy + 92);
+      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx + 2, cy + 92);
       ctx.fillStyle = '#ffe600';
-      ctx.fillText('► PRESS PLAY OR OPEN 1V1 LOBBY ◄', cx, cy + 90);
+      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx, cy + 90);
     }
 
     ctx.restore();
