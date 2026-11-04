@@ -313,8 +313,7 @@ export class LobbyOverlayUI {
     const activeRoomCode = this.net.roomCode || urlRoom;
 
     const hasVhpHome = typeof document !== 'undefined' && !!document.getElementById('vhp-mount-root');
-    const showModeDock =
-      !hasVhpHome && this.currentGameState === 'start' && !this.inPreGameLobby && !this.modalOpen;
+    const showModeDock = false; // Superseded by Vinyl Halftone Home Screen & Pre-Game Lobby
     const showPreGame = this.currentGameState === 'start' && this.inPreGameLobby;
     const showForfeit = this.currentGameState === 'game';
     const showGameOver = this.currentGameState === 'gameComplete';

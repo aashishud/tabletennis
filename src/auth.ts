@@ -199,7 +199,7 @@ export class DiscordAuthManager {
     }
 
     const params = new URLSearchParams(window.location.search);
-    const room = params.get('room');
+    const room = params.get('room') || (window as any).TTWTLobbyUI?.net?.roomCode;
     if (room) {
       sessionStorage.setItem(PENDING_ROOM_KEY, room);
     }

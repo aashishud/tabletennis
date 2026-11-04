@@ -1444,108 +1444,12 @@ export class MultiplayerBridge {
   /**
    * Renders the retro arcade start marquee for "PONGPONG" directly onto the canvas.
    */
-  public renderStartTitle(ctx: CanvasRenderingContext2D, panel: any) {
-    const canvas = window.canvas;
-    if (!canvas) return;
-    const posY = panel ? panel.posY || 0 : 0;
-    const cx = canvas.width / 2;
-    const cy = canvas.height * 0.21 - posY;
-
-    ctx.save();
-
-    // 1. Retro radial glow
-    const gradient = ctx.createRadialGradient(cx, cy, 20, cx, cy, canvas.width * 0.7);
-    gradient.addColorStop(0, 'rgba(255, 0, 127, 0.20)');
-    gradient.addColorStop(0.5, 'rgba(121, 40, 202, 0.10)');
-    gradient.addColorStop(1, 'rgba(13, 27, 42, 0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.65);
-
-    // 2. Animated floating goofy pixel balls
-    const time = performance.now();
-    const float1 = Math.sin(time / 280) * 8;
-    const float2 = Math.cos(time / 300) * 8;
-
-    // Left goofy pixel ball (Cyan)
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(cx - 192, cy - 25 + float1, 28, 28);
-    ctx.fillStyle = '#00f0ff';
-    ctx.fillRect(cx - 190, cy - 23 + float1, 24, 24);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(cx - 186, cy - 19 + float1, 4, 8); // eyes
-    ctx.fillRect(cx - 176, cy - 19 + float1, 4, 8);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 186, cy - 19 + float1, 2, 4);
-
-    // Right goofy pixel ball (Pink)
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(cx + 164, cy - 25 + float2, 28, 28);
-    ctx.fillStyle = '#ff007f';
-    ctx.fillRect(cx + 166, cy - 23 + float2, 24, 24);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(cx + 172, cy - 19 + float2, 4, 8); // eyes
-    ctx.fillRect(cx + 182, cy - 19 + float2, 4, 8);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx + 172, cy - 19 + float2, 2, 4);
-
-    // 3. Top Retro Badge: "100% P2P ARCADE"
-    ctx.font = '700 11px "Press Start 2P", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const badgeW = 240;
-    const badgeH = 26;
-    const badgeY = cy - 60;
-
-    // Neo-brutalist badge shadow
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(cx - badgeW / 2 + 4, badgeY - badgeH / 2 + 4, badgeW, badgeH);
-    // Neo-brutalist badge body
-    ctx.fillStyle = '#00f0ff';
-    ctx.fillRect(cx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#000000';
-    ctx.strokeRect(cx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH);
-    // Badge text
-    ctx.fillStyle = '#000000';
-    ctx.fillText('★ P2P RETRO ARCADE ★', cx, badgeY + 1);
-
-    // 4. Giant 3D Chunky Marquee: "PONGPONG"
-    const titleText = 'PONGPONG';
-    ctx.font = '900 48px "Press Start 2P", monospace';
-
-    // Layered 3D Extrusion Shadows
-    const shadowSteps = 6;
-    for (let s = shadowSteps; s >= 1; s--) {
-      ctx.fillStyle = s > 3 ? '#000000' : '#ff007f';
-      ctx.fillText(titleText, cx + s * 2, cy + s * 2);
-    }
-    // Main Yellow Face
-    ctx.fillStyle = '#ffe600';
-    ctx.fillText(titleText, cx, cy);
-    // Crisp White Highlight Stroke
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#ffffff';
-    ctx.strokeText(titleText, cx, cy);
-
-    // 5. Goofy Subtitle Banner
-    const subText = '1V1 • 2V2 • 4V4 PADDLE BRAWL';
-    ctx.font = '700 10px "Press Start 2P", monospace';
-    ctx.fillStyle = '#000000';
-    ctx.fillText(subText, cx + 2, cy + 38);
-    ctx.fillStyle = '#00f0ff';
-    ctx.fillText(subText, cx, cy + 36);
-
-    // 6. Blinking Arcade Prompt
-    const blink = Math.floor(time / 550) % 2 === 0;
-    if (blink) {
-      ctx.font = '700 11px "Press Start 2P", monospace';
-      ctx.fillStyle = '#000000';
-      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx + 2, cy + 74);
-      ctx.fillStyle = '#ffe600';
-      ctx.fillText('► SELECT GAME MODE BELOW ◄', cx, cy + 72);
-    }
-
-    ctx.restore();
+  /**
+   * The start screen is handled entirely by the Vinyl Halftone Preloader & Pre-Game Lobby.
+   * Suppress legacy canvas title marquee rendering so it never flashes or draws on the canvas.
+   */
+  public renderStartTitle(_ctx: CanvasRenderingContext2D, _panel: any) {
+    return;
   }
 
   /**

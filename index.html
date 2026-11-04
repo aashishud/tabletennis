@@ -56,6 +56,13 @@
       -webkit-tap-highlight-color: transparent;
       tap-highlight-color: transparent;
     }
+    #vhp-mount-root {
+      position: fixed;
+      inset: 0;
+      z-index: 1000000;
+      background: #ffe600;
+      pointer-events: auto;
+    }
   </style>
 
   <!-- Clean Standalone Famobi & Analytics API Mock -->
@@ -148,6 +155,7 @@
   </script>
 </head>
 <body>
+  <div id="vhp-mount-root"></div>
   <div id="canvas-wrapper">
     <canvas id="canvas" moz-opaque></canvas>
   </div>
