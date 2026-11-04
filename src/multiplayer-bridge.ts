@@ -619,6 +619,12 @@ export class MultiplayerBridge {
     for (const cb of this.gameStateListeners) {
       cb(state);
     }
+    if (state === 'start') {
+      const vhpRoot = document.getElementById('vhp-mount-root');
+      if (!vhpRoot && typeof (window as any).replayVinylPreloader === 'function') {
+        (window as any).replayVinylPreloader();
+      }
+    }
   }
 
   public registerGameStateListener(cb: (state: string) => void) {
@@ -701,8 +707,8 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Forfeits the current match and exits to the main menu start screen.
-   * In multiplayer, sends a MATCH_FORFEIT packet so the opponent is awarded the win.
+   * Forfeits the current match and opens the Match Results (`gameComplete`) screen.
+   * In multiplayer VS mode, sends a MATCH_FORFEIT packet so the opponent is awarded the win.
    */
   public forfeitOrExitMatch() {
     if (this.net.status === 'connected' && !this.isCoOpSameSide()) {
@@ -710,21 +716,20 @@ export class MultiplayerBridge {
         type: 'MATCH_FORFEIT',
         by: this.net.role,
       });
-      if (window.oGameData) {
-        window.oGameData.userScore = Math.min(window.oGameData.userScore || 0, 10);
-        window.oGameData.enemyScore = 11;
-      }
-      if (typeof window.initGameComplete === 'function') {
-        window.initGameComplete();
-      } else if (typeof window.initStartScreen === 'function') {
-        window.initStartScreen();
-      }
-      return;
+    } else {
+      this.setMode('BOT_MODE');
     }
 
-    // In single player vs Bot or Co-Op vs Bot:
-    this.setMode('BOT_MODE');
-    if (typeof window.initStartScreen === 'function') {
+    if (window.oGameData) {
+      window.oGameData.userScore = Math.min(window.oGameData.userScore || 0, 10);
+      window.oGameData.enemyScore = 11;
+    }
+
+    if (typeof (window as any)._initGameComplete === 'function') {
+      (window as any)._initGameComplete();
+    } else if (typeof window.initGameComplete === 'function') {
+      window.initGameComplete();
+    } else if (typeof window.initStartScreen === 'function') {
       window.initStartScreen();
     }
   }
@@ -1620,6 +1625,26 @@ export class MultiplayerBridge {
     const canvas = window.canvas;
     if (!canvas || !panel) return;
 
+    // On gameComplete, our modern Match Results Screen (#ttwt-gameover-screen) handles all UI:
+    // hide legacy canvas next/back buttons and skip legacy 2D canvas text/cards.
+    if (screenType === 'gameComplete') {
+      try {
+        if (Array.isArray(panel.aButs)) {
+          for (const b of panel.aButs) {
+            if (b && b.id !== (window as any).oImageIds?.muteBut0 && b.id !== (window as any).oImageIds?.muteBut1) {
+              b.scale = 0.0001;
+            }
+          }
+        }
+        const ui = (window as any).userInput;
+        if (ui && typeof ui.removeHitArea === 'function') {
+          ui.removeHitArea('nextFromGameComplete');
+          ui.removeHitArea('backFromGameComplete');
+        }
+      } catch {}
+      return;
+    }
+
     const localUser = this.auth.getUser();
     const opponent = this.getOpponentIdentity();
     const isCoOp = this.isCoOpSameSide();
@@ -1627,147 +1652,57 @@ export class MultiplayerBridge {
     const posY = panel.posY || 0;
     const cx = canvas.width / 2;
 
-    const centerY =
-      screenType === 'gameIntro'
-        ? canvas.height * 0.48 - posY / 4
-        : canvas.height * 0.43 - posY / 2;
-
+    const centerY = canvas.height * 0.48 - posY / 4;
     const leftX = cx - 128;
     const rightX = cx + 128;
 
-    const userWon =
-      screenType === 'gameComplete' &&
-      window.oGameData &&
-      window.oGameData.userScore > window.oGameData.enemyScore;
-    const enemyWon =
-      screenType === 'gameComplete' &&
-      window.oGameData &&
-      window.oGameData.enemyScore > window.oGameData.userScore;
+    ctx.save();
+    // Top Header
+    const headerY = canvas.height * 0.22 - posY / 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
 
-    // Center VS / VICTORY Marquee
-    if (screenType === 'gameIntro') {
-      ctx.save();
-      // Top Header
-      const headerY = canvas.height * 0.22 - posY / 2;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+    const bannerText = `★ ${this.gameMode.toUpperCase()} ARCADE BRAWL ★`;
+    ctx.font = '900 22px "Press Start 2P", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.fillText(bannerText, cx + 3, headerY + 3);
+    ctx.fillStyle = '#ff007f';
+    ctx.fillText(bannerText, cx + 1, headerY + 1);
+    ctx.fillStyle = '#ffe600';
+    ctx.fillText(bannerText, cx, headerY);
 
-      const bannerText = `★ ${this.gameMode.toUpperCase()} ARCADE BRAWL ★`;
-      ctx.font = '900 22px "Press Start 2P", monospace';
-      ctx.fillStyle = '#000000';
-      ctx.fillText(bannerText, cx + 3, headerY + 3);
-      ctx.fillStyle = '#ff007f';
-      ctx.fillText(bannerText, cx + 1, headerY + 1);
-      ctx.fillStyle = '#ffe600';
-      ctx.fillText(bannerText, cx, headerY);
+    ctx.font = '700 10px "Press Start 2P", monospace';
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillText('FIRST TO 11 POINTS WINS', cx, headerY + 32);
 
-      ctx.font = '700 10px "Press Start 2P", monospace';
-      ctx.fillStyle = '#00f0ff';
-      ctx.fillText('FIRST TO 11 POINTS WINS', cx, headerY + 32);
+    // Chunky VS Box in Center
+    const vsY = centerY;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx - 28, vsY - 18, 56, 36);
+    ctx.fillStyle = '#ffe600';
+    ctx.fillRect(cx - 30, vsY - 20, 60, 40);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeRect(cx - 30, vsY - 20, 60, 40);
 
-      // Chunky VS Box in Center
-      const vsY = centerY;
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(cx - 28, vsY - 18, 56, 36);
-      ctx.fillStyle = '#ffe600';
-      ctx.fillRect(cx - 30, vsY - 20, 60, 40);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#000000';
-      ctx.strokeRect(cx - 30, vsY - 20, 60, 40);
+    ctx.font = '900 16px "Press Start 2P", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.fillText('VS', cx, vsY + 1);
 
-      ctx.font = '900 16px "Press Start 2P", monospace';
-      ctx.fillStyle = '#000000';
-      ctx.fillText('VS', cx, vsY + 1);
-
-      // Bottom Prompt (Positioned safely above play button at 0.85)
-      const time = performance.now();
-      if (Math.floor(time / 500) % 2 === 0) {
-        ctx.font = '700 11px "Press Start 2P", monospace';
-        const promptY = Math.round(canvas.height * 0.70);
-        ctx.fillStyle = '#000000';
-        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx + 2, promptY + 2);
-        ctx.fillStyle = '#ffe600';
-        ctx.fillText('► PRESS PLAY TO SERVE ◄', cx, promptY);
-      }
-      ctx.restore();
-    } else {
-      // Game Complete Header
-      ctx.save();
-      const headerY = canvas.height * 0.16 - posY;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      const bannerText = userWon ? '★ VICTORY! ★' : enemyWon ? '★ DEFEAT! ★' : '★ DRAW! ★';
-      ctx.font = '900 28px "Press Start 2P", monospace';
-
-      // 3D shadow
-      ctx.fillStyle = '#000000';
-      ctx.fillText(bannerText, cx + 4, headerY + 4);
-      ctx.fillStyle = userWon ? '#ff007f' : '#334155';
-      ctx.fillText(bannerText, cx + 2, headerY + 2);
-      ctx.fillStyle = userWon ? '#ffe600' : '#ff477e';
-      ctx.fillText(bannerText, cx, headerY);
-
-      // Subtitle
+    // Bottom Prompt (Positioned safely above play button at 0.85)
+    const time = performance.now();
+    if (Math.floor(time / 500) % 2 === 0) {
       ctx.font = '700 11px "Press Start 2P", monospace';
-      const sub = userWon
-        ? 'PONGPONG CHAMPION!'
-        : enemyWon
-        ? 'REMATCH TO REVENGE!'
-        : 'TIED BRAWL!';
-      ctx.fillStyle = '#00f0ff';
-      ctx.fillText(sub, cx, headerY + 36);
-
-      // Scoreboard Banner Box
-      const sbW = 240;
-      const sbH = 50;
-      const sbY = centerY + 88;
-
+      const promptY = Math.round(canvas.height * 0.70);
       ctx.fillStyle = '#000000';
-      ctx.fillRect(cx - sbW / 2 + 4, sbY - sbH / 2 + 4, sbW, sbH);
-      ctx.fillStyle = '#150d2a';
-      ctx.fillRect(cx - sbW / 2, sbY - sbH / 2, sbW, sbH);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#ffe600';
-      ctx.strokeRect(cx - sbW / 2, sbY - sbH / 2, sbW, sbH);
-
-      const uScore = window.oGameData?.userScore || 0;
-      const eScore = window.oGameData?.enemyScore || 0;
-
-      ctx.font = '900 20px "Press Start 2P", monospace';
-      ctx.fillStyle = '#00f0ff';
-      ctx.fillText(String(uScore), cx - 50, sbY + 1);
+      ctx.fillText('► PRESS PLAY TO SERVE ◄', cx + 2, promptY + 2);
       ctx.fillStyle = '#ffe600';
-      ctx.fillText(':', cx, sbY + 1);
-      ctx.fillStyle = '#ff007f';
-      ctx.fillText(String(eScore), cx + 50, sbY + 1);
-
-      // Bottom Prompt (Positioned in the open gap at 0.70, completely above play button at 0.85)
-      const time = performance.now();
-      if (Math.floor(time / 500) % 2 === 0) {
-        ctx.font = '700 10px "Press Start 2P", monospace';
-        const promptY = Math.round(canvas.height * 0.70);
-        const promptText = userWon
-          ? '► CLICK PLAY OR OPEN LOBBY ◄'
-          : '► CLICK REPLAY OR OPEN LOBBY ◄';
-        ctx.fillStyle = '#000000';
-        ctx.fillText(promptText, cx + 2, promptY + 2);
-        ctx.fillStyle = '#ffe600';
-        ctx.fillText(promptText, cx, promptY);
-      }
-      ctx.restore();
+      ctx.fillText('► PRESS PLAY TO SERVE ◄', cx, promptY);
     }
+    ctx.restore();
 
     // 1P Card
-    this.drawLargeMatchPfpCard(
-      ctx,
-      leftX,
-      centerY,
-      localUser,
-      userWon ? '#ffe600' : '#00f0ff',
-      '1P',
-      userWon
-    );
+    this.drawLargeMatchPfpCard(ctx, leftX, centerY, localUser, '#00f0ff', '1P', false);
 
     // 2P / BOT Card
     this.drawLargeMatchPfpCard(
@@ -1775,9 +1710,9 @@ export class MultiplayerBridge {
       rightX,
       centerY,
       opponent,
-      enemyWon ? '#ffe600' : isMultiplayer ? '#ff007f' : '#ff9900',
+      isMultiplayer ? '#ff007f' : '#ff9900',
       isMultiplayer ? '2P' : 'BOT',
-      enemyWon
+      false
     );
   }
 
@@ -2085,4 +2020,506 @@ export class MultiplayerBridge {
 
     ctx.restore();
   }
+
+  /**
+   * High-DPI Neo-Brutalist & Retro Arcade Vector Button Renderer
+   * Replaces blurry 2012 bitmap sprites with sharp, high-voltage vector buttons:
+   * - Play button ("id0"): Slanted arcade gold capsule with 3D bevel and crisp white triangle
+   * - Mute button ("id3" unmuted, "id2" muted): Cyan / Ruby arcade tokens with sharp speaker glyph
+   * - Back button ("id4"): Hot Magenta arcade token with iconic retro turn-back arrow
+   * Returns true if custom rendered (bypassing default ctx.drawImage in app.js).
+   */
+  public drawCustomButton(
+    ctx: CanvasRenderingContext2D,
+    but: any,
+    cx: number,
+    cy: number,
+    _bWidth: number,
+    _bHeight: number,
+    scale: number = 1
+  ): boolean {
+    if (!but || !but.id) return false;
+    const id = but.id;
+
+    const isPlay = id === 'id0';
+    const isMuteOff = id === 'id3'; // Unmuted (sound enabled)
+    const isMuteOn = id === 'id2';  // Muted
+    const isBack = id === 'id4';
+    const isPause = id === 'id8';
+    const isRestart = id === 'id6';
+
+    if (!isPlay && !isMuteOff && !isMuteOn && !isBack && !isPause && !isRestart) {
+      return false;
+    }
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (scale !== 1) {
+      ctx.scale(scale, scale);
+    }
+
+    // ==========================================
+    // 1. PLAY BUTTON ("id0") - Slanted Gold Capsule
+    // ==========================================
+    if (isPlay) {
+      const w = 186;
+      const h = 66;
+      const r = 24;
+
+      ctx.save();
+      // Brawlhalla-style energetic slanted angle
+      ctx.transform(1, 0, -0.09, 1, 0, 0);
+
+      // 1. Heavy Black Drop Shadow
+      ctx.fillStyle = '#000000';
+      drawButtonRoundRect(ctx, -w / 2 + 5, -h / 2 + 7, w, h, r);
+      ctx.fill();
+
+      // 2. 3D Bottom Extrusion Lip
+      ctx.fillStyle = '#c47100';
+      drawButtonRoundRect(ctx, -w / 2, -h / 2 + 5, w, h, r);
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // 3. Vibrant Top Face Gradient
+      const grad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+      grad.addColorStop(0, '#fff368');
+      grad.addColorStop(0.35, '#ffe600');
+      grad.addColorStop(0.85, '#ffad00');
+      grad.addColorStop(1, '#ff9100');
+      ctx.fillStyle = grad;
+      drawButtonRoundRect(ctx, -w / 2, -h / 2, w, h, r);
+      ctx.fill();
+
+      // 4. Crisp Black Border
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // 5. Glass Sheen on Top Half
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-w / 2, -h / 2, w, h * 0.44);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+      drawButtonRoundRect(ctx, -w / 2 + 3, -h / 2 + 3, w - 6, h - 6, r - 2);
+      ctx.fill();
+      ctx.restore();
+
+      // 6. Bold White Play Triangle (▶)
+      ctx.save();
+      // Triangle Shadow
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.moveTo(-11 + 2, -18 + 3);
+      ctx.lineTo(19 + 2, 0 + 3);
+      ctx.lineTo(-11 + 2, 18 + 3);
+      ctx.closePath();
+      ctx.fill();
+
+      // Triangle Face
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(-11, -18);
+      ctx.lineTo(19, 0);
+      ctx.lineTo(-11, 18);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#000000';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+
+      // 7. Mini Sparkle Star
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      const sx = -w / 2 + 22;
+      const sy = -h / 2 + 15;
+      ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore(); // restore transform
+      ctx.restore(); // restore translate/scale
+      return true;
+    }
+
+    // ==========================================
+    // 2. BACK BUTTON ("id4") - Hot Magenta Token
+    // ==========================================
+    if (isBack) {
+      const r = 24;
+
+      // 1. Drop Shadow
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(3.5, 5, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 3D Bottom Lip Bevel
+      ctx.fillStyle = '#6b0036';
+      ctx.beginPath();
+      ctx.arc(0, 4, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // 3. Face Gradient
+      const grad = ctx.createLinearGradient(0, -r, 0, r);
+      grad.addColorStop(0, '#ff3b99');
+      grad.addColorStop(0.5, '#ff007f');
+      grad.addColorStop(1, '#ba005c');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. Black Border
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // 5. Top Inner Highlight Ring
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, -1, r - 3, Math.PI * 0.85, Math.PI * 1.85);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+
+      // 6. Iconic Sharp Retro Turn-Back Arrow (↵)
+      ctx.save();
+      const drawArrow = (ox: number, oy: number, fill: string, stroke?: string) => {
+        ctx.beginPath();
+        // Arrow head pointing left
+        ctx.moveTo(-10 + ox, 0 + oy);
+        ctx.lineTo(-2 + ox, -8 + oy);
+        ctx.lineTo(-2 + ox, -3 + oy);
+        // Horizontal bar
+        ctx.lineTo(6 + ox, -3 + oy);
+        // Turn-up vertical hook
+        ctx.lineTo(6 + ox, -8 + oy);
+        ctx.lineTo(10 + ox, -8 + oy);
+        ctx.lineTo(10 + ox, 3 + oy);
+        ctx.lineTo(-2 + ox, 3 + oy);
+        ctx.lineTo(-2 + ox, 8 + oy);
+        ctx.closePath();
+
+        ctx.fillStyle = fill;
+        ctx.fill();
+        if (stroke) {
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 2;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
+      };
+
+      // Shadow
+      drawArrow(1.5, 2.5, '#000000');
+      // White Face
+      drawArrow(0, 0, '#ffffff', '#000000');
+      ctx.restore();
+
+      ctx.restore();
+      return true;
+    }
+
+    // ==========================================
+    // 3. MUTE BUTTON ("id3" unmuted, "id2" muted)
+    // ==========================================
+    if (isMuteOff || isMuteOn) {
+      const r = 24;
+
+      // 1. Drop Shadow
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(3.5, 5, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (isMuteOff) {
+        // UNMUTED: Neon Cyan Arcade Token
+        // 2. 3D Bottom Lip Bevel
+        ctx.fillStyle = '#005973';
+        ctx.beginPath();
+        ctx.arc(0, 4, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        // 3. Face Gradient
+        const grad = ctx.createLinearGradient(0, -r, 0, r);
+        grad.addColorStop(0, '#5effff');
+        grad.addColorStop(0.5, '#00f0ff');
+        grad.addColorStop(1, '#009bb8');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Black Border
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        // 5. Highlight Ring
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, -1, r - 3, Math.PI * 0.85, Math.PI * 1.85);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+
+        // 6. Crisp Speaker Glyph + Sound Waves
+        ctx.save();
+        const drawSpeakerCone = (ox: number, oy: number, fill: string, stroke?: string) => {
+          ctx.beginPath();
+          // Body rect
+          ctx.rect(-11 + ox, -5 + oy, 5, 10);
+          // Bell trapezoid
+          ctx.moveTo(-6 + ox, -5 + oy);
+          ctx.lineTo(0 + ox, -10 + oy);
+          ctx.lineTo(0 + ox, 10 + oy);
+          ctx.lineTo(-6 + ox, 5 + oy);
+          ctx.closePath();
+
+          ctx.fillStyle = fill;
+          ctx.fill();
+          if (stroke) {
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+          }
+        };
+
+        // Shadow
+        drawSpeakerCone(1.5, 2, '#000000');
+        // Face
+        drawSpeakerCone(0, 0, '#ffffff', '#000000');
+
+        // Sound wave 1 (inner)
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, -Math.PI * 0.32, Math.PI * 0.32);
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(-0.5, -0.5, 6, -Math.PI * 0.32, Math.PI * 0.32);
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // Sound wave 2 (outer)
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, -Math.PI * 0.36, Math.PI * 0.36);
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(-0.5, -0.5, 11, -Math.PI * 0.36, Math.PI * 0.36);
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+
+      } else {
+        // MUTED: Dark Cabinet Token with Red Strike-Through
+        // 2. 3D Bottom Lip Bevel
+        ctx.fillStyle = '#140c24';
+        ctx.beginPath();
+        ctx.arc(0, 4, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        // 3. Face Gradient
+        const grad = ctx.createLinearGradient(0, -r, 0, r);
+        grad.addColorStop(0, '#2b193d');
+        grad.addColorStop(1, '#130a1c');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Red Warning Border
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#ff0055';
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        // 5. Speaker in Dimmed White
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-10, -5, 5, 10);
+        ctx.moveTo(-5, -5);
+        ctx.lineTo(1, -10);
+        ctx.lineTo(1, 10);
+        ctx.lineTo(-5, 5);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        // 6. Bold Strike-Through Slash (\)
+        ctx.beginPath();
+        ctx.moveTo(-11, -11);
+        ctx.lineTo(11, 11);
+        ctx.lineWidth = 5.5;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-11, -11);
+        ctx.lineTo(11, 11);
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#ff0055';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-10, -10);
+        ctx.lineTo(10, 10);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore();
+      return true;
+    }
+
+    // ==========================================
+    // 4. PAUSE BUTTON ("id8")
+    // ==========================================
+    if (isPause) {
+      const r = 24;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(3.5, 5, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#4a1575';
+      ctx.beginPath();
+      ctx.arc(0, 4, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      const grad = ctx.createLinearGradient(0, -r, 0, r);
+      grad.addColorStop(0, '#9333ea');
+      grad.addColorStop(1, '#6b21a8');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // Pause bars ❚❚
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(-7 + 1.5, -9 + 2, 5, 18);
+      ctx.fillRect(2 + 1.5, -9 + 2, 5, 18);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-7, -9, 5, 18);
+      ctx.fillRect(2, -9, 5, 18);
+
+      ctx.restore();
+      return true;
+    }
+
+    // ==========================================
+    // 5. RESTART BUTTON ("id6")
+    // ==========================================
+    if (isRestart) {
+      const r = 24;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(3.5, 5, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#a84c00';
+      ctx.beginPath();
+      ctx.arc(0, 4, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      const grad = ctx.createLinearGradient(0, -r, 0, r);
+      grad.addColorStop(0, '#ff9900');
+      grad.addColorStop(1, '#d96500');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#000000';
+      ctx.stroke();
+
+      // Circular refresh arrow ⟳
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, -Math.PI * 0.7, Math.PI * 0.9);
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Arrow head on arc
+      ctx.beginPath();
+      ctx.moveTo(8, -8);
+      ctx.lineTo(13, -1);
+      ctx.lineTo(5, -1);
+      ctx.closePath();
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.restore();
+      return true;
+    }
+
+    ctx.restore();
+    return false;
+  }
+}
+
+/** Helper: Universal rounded rectangle path compatible with all canvas contexts */
+function drawButtonRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }

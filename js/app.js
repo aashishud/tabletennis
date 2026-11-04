@@ -58,12 +58,6 @@ var Utils;
             ctx.fillStyle = "#150d2a";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 2. Scanline grid effect
-            ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
-            for (var y = 0; y < canvas.height; y += 4) {
-                ctx.fillRect(0, y, canvas.width, 2);
-            }
-
             // 3. Subtle ambient glow
             var radGrad = ctx.createRadialGradient(cx, cy - 80, 10, cx, cy - 80, 240);
             radGrad.addColorStop(0, "rgba(255, 0, 127, 0.25)");
@@ -1515,6 +1509,15 @@ var Elements;
                 var bHeight = this.aButs[i].oImgData.oData.oAtlasData[this.aButs[i].id].height;
                 var aX = canvas.width * this.aButs[i].align[0];
                 var aY = canvas.height * this.aButs[i].align[1];
+
+                var drawCenterX = aX + this.aButs[i].aPos[0] + offsetPosY;
+                var drawCenterY = aY + this.aButs[i].aPos[1] + (this.aButs[i].noMove ? 0 : floatY / 2);
+                if (window.TTWTMultiplayer && typeof window.TTWTMultiplayer.drawCustomButton === "function") {
+                    if (window.TTWTMultiplayer.drawCustomButton(ctx, this.aButs[i], drawCenterX, drawCenterY, bWidth, bHeight, this.aButs[i].scale)) {
+                        continue;
+                    }
+                }
+
                 ctx.drawImage(this.aButs[i].oImgData.img, bX, bY, bWidth, bHeight, aX + this.aButs[i].aPos[0] - (bWidth / 2) * (this.aButs[i].scale) + offsetPosY - floatY / 2, aY + this.aButs[i].aPos[1] - (bHeight / 2) * (this.aButs[i].scale) + floatY / 2, bWidth * (this.aButs[i].scale) + floatY, bHeight * (this.aButs[i].scale) - floatY);
             }
         };

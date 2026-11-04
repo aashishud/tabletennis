@@ -30,10 +30,19 @@ export class LobbyOverlayUI {
     this.root = existing;
 
     this.bridge.registerGameStateListener((state) => {
+      const prevState = this.currentGameState;
       this.currentGameState = state;
       if (state === 'game' || state === 'gameComplete' || state === 'pause') {
         this.inPreGameLobby = false;
         this.modalOpen = false;
+        (window as any).setVinylLobbyMode?.(false);
+        if (state === 'game') {
+          (window as any).triggerVinylMatchExit?.();
+        }
+      } else if (state === 'start' && prevState !== 'start') {
+        if (typeof document !== 'undefined' && !document.getElementById('vhp-mount-root')) {
+          (window as any).replayVinylPreloader?.();
+        }
       }
       this.render();
     });
@@ -76,15 +85,88 @@ export class LobbyOverlayUI {
     this.render();
   }
 
+  public isPreGameLobbyOpen(): boolean {
+    return this.inPreGameLobby;
+  }
+
   public openPreGameLobby() {
     this.inPreGameLobby = true;
     this.modalOpen = false;
+    (window as any).setVinylLobbyMode?.(true);
     this.render();
   }
 
   public closePreGameLobby() {
     this.inPreGameLobby = false;
+    (window as any).setVinylLobbyMode?.(false);
     this.render();
+  }
+
+  /**
+   * Leaves the current lobby room completely, clears the ?room= URL param,
+   * disconnects WebRTC, and returns to the Vinyl Halftone Home Screen.
+   */
+  public leaveLobby() {
+    const hadRoom = Boolean(this.net.roomCode);
+    this.net.disconnect();
+    window.history.replaceState(null, '', window.location.pathname);
+    this.inPreGameLobby = false;
+    this.modalOpen = false;
+    (window as any).setVinylLobbyMode?.(false);
+
+    if (this.currentGameState !== 'start' && typeof window.initStartScreen === 'function') {
+      window.initStartScreen();
+    }
+    if (typeof document !== 'undefined' && !document.getElementById('vhp-mount-root')) {
+      (window as any).replayVinylPreloader?.();
+    }
+
+    this.render();
+    if (hadRoom) {
+      this.showToast('🚪 LEFT LOBBY ROOM');
+    }
+  }
+
+  /**
+   * Returns from the Match Results (gameComplete) screen back into the Pre-Game Lobby
+   * over the Vinyl Halftone Home Screen while keeping the current room & connected friend intact!
+   */
+  public returnToPreGameLobbyFromMatch() {
+    if (this.currentGameState !== 'start' && typeof window.initStartScreen === 'function') {
+      window.initStartScreen();
+    }
+    this.currentGameState = 'start';
+    if (typeof document !== 'undefined' && !document.getElementById('vhp-mount-root')) {
+      (window as any).replayVinylPreloader?.();
+    }
+    this.openPreGameLobby();
+  }
+
+  public async openPreGameLobbyForMode(mode: GameMode) {
+    this.bridge.setGameMode(mode);
+    this.openPreGameLobby();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRoom = urlParams.get('room')?.toUpperCase().trim();
+
+    if (urlRoom && !this.net.roomCode) {
+      await this.net.joinRoom(urlRoom);
+    } else if (!this.net.roomCode) {
+      const code = await this.net.createRoom();
+      window.history.replaceState(null, '', `?room=${code}`);
+      this.render();
+    }
+  }
+
+  public async joinRoomFromHome(rawCode: string) {
+    const code = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 4) {
+      this.showToast('ENTER VALID 6-CHAR CODE!');
+      return;
+    }
+    this.openPreGameLobby();
+    window.history.replaceState(null, '', `?room=${code}`);
+    await this.net.joinRoom(code);
   }
 
   public openModal() {
@@ -230,10 +312,24 @@ export class LobbyOverlayUI {
     const urlRoom = urlParams.get('room')?.toUpperCase().trim() || '';
     const activeRoomCode = this.net.roomCode || urlRoom;
 
+    const hasVhpHome = typeof document !== 'undefined' && !!document.getElementById('vhp-mount-root');
     const showModeDock =
-      this.currentGameState === 'start' && !this.inPreGameLobby && !this.modalOpen;
+      !hasVhpHome && this.currentGameState === 'start' && !this.inPreGameLobby && !this.modalOpen;
     const showPreGame = this.currentGameState === 'start' && this.inPreGameLobby;
     const showForfeit = this.currentGameState === 'game';
+    const showGameOver = this.currentGameState === 'gameComplete';
+
+    const userScore = Number((window as any).oGameData?.userScore || 0);
+    const enemyScore = Number((window as any).oGameData?.enemyScore || 0);
+    const userWon = userScore > enemyScore;
+    const enemyWon = enemyScore > userScore;
+    const resultClass = userWon ? 'victory' : enemyWon ? 'defeat' : 'draw';
+    const resultTitle = userWon ? '★ VICTORY! ★' : enemyWon ? '★ DEFEAT! ★' : '★ DRAW! ★';
+    const resultSubtitle = userWon
+      ? 'PONGPONG ARENA CHAMPION!'
+      : enemyWon
+      ? "DON'T GIVE UP • REMATCH TO REVENGE!"
+      : 'NECK AND NECK BRAWL!';
 
     const gameMode = this.bridge.gameMode;
     const guestSide = this.bridge.guestSide;
@@ -281,8 +377,16 @@ export class LobbyOverlayUI {
             <span class="ttwt-invite-label">INVITE</span>
             <span class="ttwt-invite-code">${this.net.roomCode}</span>
           </button>
+          <button class="ttwt-hud-leave-btn" id="ttwt-hud-leave-btn" title="Leave Lobby Room">
+            <span>🚪 LEAVE</span>
+          </button>
         `
-            : ''
+            : `
+          <button class="ttwt-hud-vinyl-btn" id="ttwt-hud-vinyl-btn" title="Replay Vinyl Halftone Intro">
+            <span class="ttwt-vinyl-icon">📀</span>
+            <span class="ttwt-vinyl-label">INTRO</span>
+          </button>
+        `
         }
       </div>
 
@@ -357,9 +461,14 @@ export class LobbyOverlayUI {
         <div class="ttwt-pregame-cabinet">
           <!-- Header Row -->
           <div class="ttwt-pregame-header">
-            <button class="ttwt-btn ttwt-btn-ghost ttwt-pregame-back-btn" id="ttwt-pregame-back-btn">
-              ⬅ MODES
-            </button>
+            <div class="ttwt-pregame-nav-group">
+              <button class="ttwt-btn ttwt-btn-ghost ttwt-pregame-back-btn" id="ttwt-pregame-back-btn" title="Collapse lobby back to Modes">
+                ⬅ MODES
+              </button>
+              <button class="ttwt-btn ttwt-btn-leave ttwt-pregame-leave-btn" id="ttwt-pregame-leave-btn" title="Disconnect and leave this lobby room">
+                🚪 LEAVE
+              </button>
+            </div>
 
             <div class="ttwt-pregame-title-wrap">
               <div class="ttwt-pregame-main-title">★ ${modeTitleMap[gameMode]} LOBBY ★</div>
@@ -380,10 +489,13 @@ export class LobbyOverlayUI {
               <button class="ttwt-btn ttwt-btn-cyan ttwt-pregame-copy-btn" id="ttwt-pregame-copy-btn" title="Copy invite link for friend">
                 🔗 INVITE
               </button>
+              <button class="ttwt-btn ttwt-btn-ghost ttwt-pregame-profile-btn" id="ttwt-pregame-profile-btn" title="Open Player Profile & Discord Login">
+                👤 PROFILE
+              </button>
             </div>
           </div>
 
-          <!-- 🎮 Mode Switcher & 2v2/4v4 Side Selection Bar -->
+          <!-- 🎮 Mode Switcher & 2v2/4v4 Side Selection Bar + Inline Room Join -->
           <div class="ttwt-pregame-mode-bar">
             <div class="ttwt-mode-pills-group">
               <span class="ttwt-bar-mini-label">MODE:</span>
@@ -426,6 +538,20 @@ export class LobbyOverlayUI {
             `
                 : ''
             }
+
+            <div class="ttwt-pregame-inline-join">
+              <span class="ttwt-bar-mini-label">JOIN:</span>
+              <input
+                type="text"
+                class="ttwt-pregame-join-input"
+                id="ttwt-pregame-join-input"
+                placeholder="6-CHAR"
+                maxlength="6"
+              />
+              <button class="ttwt-btn ttwt-btn-cyan ttwt-pregame-join-btn" id="ttwt-pregame-join-btn">
+                JOIN ▶
+              </button>
+            </div>
           </div>
 
           <!-- Teams VS Roster Row -->
@@ -618,6 +744,124 @@ export class LobbyOverlayUI {
         </div>
       </div>
 
+      <!-- 🏆 HALFTONE COMIC & ARCADE MATCH RESULTS SCREEN (VICTORY / DEFEAT / DRAW) -->
+      <div class="ttwt-gameover-backdrop ${showGameOver ? '' : 'ttwt-hidden'} ${resultClass}" id="ttwt-gameover-screen">
+        <div class="ttwt-gameover-cabinet">
+          <!-- Stage & Mode Hero Banner Header -->
+          <div class="ttwt-gameover-hero" style="--stage-accent: ${selectedMap.accentHex};">
+            <img
+              class="ttwt-gameover-hero-bg"
+              src="${this.bridge.getMapSnapshotDataUrl(selectedMap.id)}"
+              alt="${selectedMap.name}"
+            />
+            <div class="ttwt-gameover-hero-overlay"></div>
+
+            <div class="ttwt-gameover-top-badges">
+              <span class="ttwt-gameover-stage-pill">🏟️ ${selectedMap.name} • ${modeTitleMap[gameMode]}</span>
+              ${
+                this.net.roomCode
+                  ? `<span class="ttwt-gameover-room-pill">ROOM: ${this.net.roomCode}</span>`
+                  : `<span class="ttwt-gameover-room-pill">SOLO ARENA</span>`
+              }
+            </div>
+
+            <div class="ttwt-gameover-marquee">
+              <h1 class="ttwt-gameover-title ${resultClass}" data-text="${resultTitle}">${resultTitle}</h1>
+              <div class="ttwt-gameover-subtitle">${resultSubtitle}</div>
+            </div>
+          </div>
+
+          <!-- Centerpiece Scoreboard & VS Roster -->
+          <div class="ttwt-gameover-matchup-row">
+            <!-- Left Squad Card (You / Bottom Table) -->
+            <div class="ttwt-gameover-team-card local ${userWon ? 'winner' : 'loser'}">
+              <div class="ttwt-gameover-team-head">
+                <span class="ttwt-player-role-tag host">
+                  ${
+                    teamSize === 1
+                      ? this.net.role === 'guest'
+                        ? '2P • GUEST (YOU)'
+                        : '1P • HOST (YOU)'
+                      : isCoOp
+                      ? `🤝 CO-OP HOME TEAM (${teamSize}P)`
+                      : `🏠 YOUR SQUAD (${teamSize}P)`
+                  }
+                </span>
+                ${userWon ? `<span class="ttwt-gameover-winner-crown">👑 WINNER</span>` : ''}
+              </div>
+              ${this.renderTeamRosterSlots(
+                'user',
+                teamSize,
+                hasPeerInLobby,
+                guestSide,
+                user.displayName,
+                user.avatarUrl,
+                this.bridge.localPaddleColor,
+                remote ? remote.displayName : 'PLAYER 2',
+                remote ? remote.avatarUrl : BOT_PROFILE.avatarUrl,
+                opponentPaddleHex
+              )}
+            </div>
+
+            <!-- Center Giant Arcade Score Box -->
+            <div class="ttwt-gameover-score-box">
+              <div class="ttwt-gameover-score-label">FINAL SCORE</div>
+              <div class="ttwt-gameover-score-digits">
+                <span class="ttwt-score-num user ${userWon ? 'win' : ''}">${userScore}</span>
+                <span class="ttwt-score-colon">:</span>
+                <span class="ttwt-score-num enemy ${enemyWon ? 'win' : ''}">${enemyScore}</span>
+              </div>
+              <div class="ttwt-gameover-score-tag">FIRST TO 11 PTS</div>
+            </div>
+
+            <!-- Right Squad Card (Opponent / Top Table) -->
+            <div class="ttwt-gameover-team-card opponent ${enemyWon ? 'winner' : 'loser'}">
+              <div class="ttwt-gameover-team-head">
+                <span class="ttwt-player-role-tag ${hasPeerInLobby && !isCoOp ? 'guest' : 'bot'}">
+                  ${
+                    teamSize === 1
+                      ? hasPeerInLobby
+                        ? '2P • CHALLENGER'
+                        : '🤖 AI BOT'
+                      : isCoOp
+                      ? `🤖 AI BOT SQUAD (${teamSize}x)`
+                      : hasPeerInLobby
+                      ? `⚔️ RIVAL SQUAD`
+                      : `🤖 AI BOT SQUAD (${teamSize}x)`
+                  }
+                </span>
+                ${enemyWon ? `<span class="ttwt-gameover-winner-crown">👑 WINNER</span>` : ''}
+              </div>
+              ${this.renderTeamRosterSlots(
+                'enemy',
+                teamSize,
+                hasPeerInLobby,
+                guestSide,
+                user.displayName,
+                user.avatarUrl,
+                this.bridge.localPaddleColor,
+                remote ? remote.displayName : 'AI BOT',
+                remote ? remote.avatarUrl : BOT_PROFILE.avatarUrl,
+                opponentPaddleHex
+              )}
+            </div>
+          </div>
+
+          <!-- 3 Dedicated Action Buttons -->
+          <div class="ttwt-gameover-actions">
+            <button class="ttwt-btn ttwt-btn-arcade ttwt-gameover-rematch-btn" id="ttwt-gameover-rematch-btn">
+              🔄 REMATCH NOW ▶
+            </button>
+            <button class="ttwt-btn ttwt-btn-cyan ttwt-gameover-lobby-btn" id="ttwt-gameover-lobby-btn">
+              🏟️ BACK TO LOBBY ▶
+            </button>
+            <button class="ttwt-btn ttwt-btn-leave ttwt-gameover-leave-btn" id="ttwt-gameover-leave-btn">
+              🚪 LEAVE LOBBY
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 👾 Retro Profile & Discord Modal (Accessible from Top-Left 1P Button) -->
       <div class="ttwt-modal-backdrop ${this.modalOpen ? '' : 'ttwt-hidden'}" id="ttwt-modal-backdrop">
         <div class="ttwt-modal-card" id="ttwt-modal-card">
@@ -755,13 +999,52 @@ export class LobbyOverlayUI {
       if (e.key === 'Enter') void handleDockJoin();
     });
 
-    // ⬅ Back Button in Pre-Game Lobby
+    // Inline Join with Code inside Pre-Game Lobby
+    const inlineJoinInput = document.getElementById('ttwt-pregame-join-input') as HTMLInputElement | null;
+    const handleInlineJoin = async () => {
+      const code = inlineJoinInput?.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || '';
+      if (code.length < 4) {
+        this.showToast('ENTER VALID 6-CHAR CODE!');
+        return;
+      }
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit0');
+      }
+      await this.joinRoomFromHome(code);
+    };
+    document.getElementById('ttwt-pregame-join-btn')?.addEventListener('click', handleInlineJoin);
+    inlineJoinInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void handleInlineJoin();
+    });
+
+    // 👤 Profile Button inside Pre-Game Lobby
+    document.getElementById('ttwt-pregame-profile-btn')?.addEventListener('click', () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit1');
+      }
+      this.openModal();
+    });
+
+    // ⬅ Back Button in Pre-Game Lobby -> Returns to 4 diagonal stage buttons on Vinyl screen
     document.getElementById('ttwt-pregame-back-btn')?.addEventListener('click', () => {
       if (typeof window.playSound === 'function') {
         window.playSound('hit1');
       }
       this.closePreGameLobby();
+      if (typeof document !== 'undefined' && !document.getElementById('vhp-mount-root')) {
+        (window as any).replayVinylPreloader?.();
+      }
     });
+
+    // 🚪 Leave Lobby Room Button (in Pre-Game Lobby or HUD)
+    const handleLeaveLobby = () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit2');
+      }
+      this.leaveLobby();
+    };
+    document.getElementById('ttwt-pregame-leave-btn')?.addEventListener('click', handleLeaveLobby);
+    document.getElementById('ttwt-hud-leave-btn')?.addEventListener('click', handleLeaveLobby);
 
     // 🔗 Copy Invite Link in Pre-Game Lobby or HUD
     const copyRoomInvite = () => {
@@ -779,6 +1062,9 @@ export class LobbyOverlayUI {
 
     document.getElementById('ttwt-hud-invite-btn')?.addEventListener('click', copyRoomInvite);
     document.getElementById('ttwt-pregame-copy-btn')?.addEventListener('click', copyRoomInvite);
+    document.getElementById('ttwt-hud-vinyl-btn')?.addEventListener('click', () => {
+      (window as any).replayVinylPreloader?.();
+    });
 
     // 🏟️ Map Selection Cards (Host click to lock in + All players hover to preview in HD Hero Banner)
     const updateHeroStagePreview = (mapId: string, isHoverPreview: boolean) => {
@@ -850,7 +1136,8 @@ export class LobbyOverlayUI {
       if (typeof window.playSound === 'function') {
         window.playSound('hit0');
       }
-      this.inPreGameLobby = false;
+      this.closePreGameLobby();
+      (window as any).triggerVinylMatchExit?.();
       this.bridge.start1v1Match();
     });
 
@@ -861,6 +1148,25 @@ export class LobbyOverlayUI {
       }
       this.bridge.forfeitOrExitMatch();
     });
+
+    // 🔄 Rematch Button on Match Results Screen
+    document.getElementById('ttwt-gameover-rematch-btn')?.addEventListener('click', () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit0');
+      }
+      this.bridge.start1v1Match();
+    });
+
+    // 🏟️ Back to Lobby Button on Match Results Screen (keeps room & connected friend intact!)
+    document.getElementById('ttwt-gameover-lobby-btn')?.addEventListener('click', () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit1');
+      }
+      this.returnToPreGameLobbyFromMatch();
+    });
+
+    // 🚪 Leave Lobby Button on Match Results Screen
+    document.getElementById('ttwt-gameover-leave-btn')?.addEventListener('click', handleLeaveLobby);
   }
 
   public showToast(msg: string) {

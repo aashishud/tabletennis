@@ -3,6 +3,7 @@ import { DiscordAuthManager } from './auth';
 import { WebRTCRoomManager } from './network';
 import { MultiplayerBridge } from './multiplayer-bridge';
 import { LobbyOverlayUI } from './lobby-ui';
+import { mountHomePreloader } from './home-preloader';
 
 async function bootstrapMultiplayerApp() {
   const auth = new DiscordAuthManager();
@@ -13,16 +14,24 @@ async function bootstrapMultiplayerApp() {
   window.TTWTMultiplayer = bridge;
 
   const ui = new LobbyOverlayUI(auth, net, bridge);
+  (window as any).TTWTLobbyUI = ui;
 
   // Check if returning from Discord OAuth2 callback (?code= or #access_token=)
   await auth.handleOAuthCallbackIfPresent();
+
+  // Expose replay helper for easy testing / re-triggering of the vinyl entrance
+  (window as any).replayVinylPreloader = () => {
+    mountHomePreloader();
+  };
+
+  // Always mount the Vinyl Halftone Home Screen
+  mountHomePreloader();
 
   // Check if joining a room via shareable link (?room=XXXXXX)
   const params = new URLSearchParams(window.location.search);
   const roomParam = params.get('room');
   if (roomParam && roomParam.trim().length >= 4) {
-    ui.openPreGameLobby();
-    await net.joinRoom(roomParam.trim().toUpperCase());
+    await ui.joinRoomFromHome(roomParam.trim().toUpperCase());
   }
 }
 

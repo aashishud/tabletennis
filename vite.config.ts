@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
+import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import discordTokenHandler from './api/auth/discord/token';
@@ -54,6 +55,9 @@ function vercelServerlessAndAssetsPlugin(env: Record<string, string>): Plugin {
       for (const folder of ['images', 'audio', 'js']) {
         copyDirSync(path.resolve(rootDir, folder), path.resolve(outDir, folder));
       }
+      if (fs.existsSync(path.resolve(rootDir, 'favicon.png'))) {
+        fs.copyFileSync(path.resolve(rootDir, 'favicon.png'), path.resolve(outDir, 'favicon.png'));
+      }
     },
   };
 }
@@ -62,7 +66,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
     publicDir: false,
-    plugins: [vercelServerlessAndAssetsPlugin(env)],
+    plugins: [react(), vercelServerlessAndAssetsPlugin(env)],
     server: {
       port: 5173,
       host: true,
