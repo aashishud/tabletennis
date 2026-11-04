@@ -508,43 +508,74 @@ export class LobbyOverlayUI {
             </div>
           </div>
 
-          <!-- 🏟️ Map Selector (Visible to all, only Host can change) -->
-          <div class="ttwt-pregame-section">
+          <!-- 🏟️ Brawlhalla-Style HD Stage Select (Cinematic Hero Banner + Slanted HD Thumbnails) -->
+          <div class="ttwt-pregame-section ttwt-stage-select-section">
             <div class="ttwt-pregame-section-head">
-              <span>🏟️ ARENA MAP: <b style="color: #fff;">${selectedMap.name}</b></span>
+              <div class="ttwt-stage-head-left">
+                <span class="ttwt-stage-section-icon">🏟️</span>
+                <span>TOURNAMENT STAGE SELECT</span>
+              </div>
               <span class="ttwt-map-perm-badge ${canSelectMap ? 'host' : 'guest'}">
                 ${
                   canSelectMap
-                    ? '👑 HOST CONTROLS MAP'
-                    : '🔒 HOST IS SELECTING MAP (LIVE)'
+                    ? '👑 HOST CONTROLS STAGE'
+                    : '🔒 HOST SELECTING STAGE (LIVE)'
                 }
               </span>
             </div>
 
+            <!-- Cinematic HD Stage Hero Preview Banner -->
+            <div class="ttwt-stage-hero-banner" id="ttwt-stage-hero-banner" style="--stage-accent: ${selectedMap.accentHex};">
+              <img
+                class="ttwt-stage-hero-img"
+                id="ttwt-stage-hero-img"
+                src="${this.bridge.getMapSnapshotDataUrl(selectedMap.id)}"
+                alt="${selectedMap.name}"
+              />
+              <div class="ttwt-stage-hero-vignette"></div>
+
+              <div class="ttwt-stage-hero-plaque">
+                <div class="ttwt-stage-hero-tag" id="ttwt-stage-hero-tag">★ ACTIVE ARENA STAGE</div>
+                <div class="ttwt-stage-hero-title" id="ttwt-stage-hero-title">${selectedMap.name}</div>
+                <div class="ttwt-stage-hero-sub" id="ttwt-stage-hero-sub">${selectedMap.subtitle}</div>
+              </div>
+
+              <div class="ttwt-stage-hero-badge" id="ttwt-stage-hero-badge">
+                <span>LOCKED IN</span>
+              </div>
+            </div>
+
+            <!-- 5 Slanted HD Stage Thumbnail Tiles -->
             <div class="ttwt-map-cards-row">
               ${ARENA_MAPS.map((m) => {
                 const isSelected = m.id === selectedMap.id;
+                const snapUrl = this.bridge.getMapSnapshotDataUrl(m.id);
                 return `
                   <button
                     class="ttwt-map-option-card ${isSelected ? 'selected' : ''} ${
                   canSelectMap ? '' : 'readonly'
                 }"
                     data-map-id="${m.id}"
+                    style="--tile-accent: ${m.accentHex};"
                     title="${
                       canSelectMap
-                        ? `Select ${m.name}`
-                        : `Only the Host can change the map (${m.name})`
+                        ? `Select Stage: ${m.name} (${m.subtitle})`
+                        : `Only the Host can change the stage (${m.name})`
                     }"
                   >
-                    <div class="ttwt-map-mini-preview" style="background: ${m.previewWallHex};">
-                      <div class="ttwt-map-mini-table" style="background: ${m.previewTableHex};">
-                        <div class="ttwt-map-mini-net"></div>
-                        <div class="ttwt-map-mini-line"></div>
+                    <div class="ttwt-map-hd-frame">
+                      <img class="ttwt-map-hd-thumb" src="${snapUrl}" alt="${m.name}" />
+                      <div class="ttwt-map-hd-shade"></div>
+                      ${
+                        isSelected
+                          ? `<div class="ttwt-map-selected-star">★ SELECTED</div>`
+                          : ''
+                      }
+                      <div class="ttwt-map-hd-caption">
+                        <div class="ttwt-map-option-name">${m.name}</div>
+                        <div class="ttwt-map-option-sub">${m.subtitle}</div>
                       </div>
-                      ${isSelected ? `<div class="ttwt-map-selected-star">★</div>` : ''}
                     </div>
-                    <div class="ttwt-map-option-name">${m.name}</div>
-                    <div class="ttwt-map-option-sub">${m.subtitle}</div>
                   </button>
                 `;
               }).join('')}
@@ -786,13 +817,50 @@ export class LobbyOverlayUI {
       window.open(url, '_blank');
     });
 
-    // 🏟️ Map Selection Cards (Host only)
+    // 🏟️ Map Selection Cards (Host click to lock in + All players hover to preview in HD Hero Banner)
+    const updateHeroStagePreview = (mapId: string, isHoverPreview: boolean) => {
+      const m = ARENA_MAPS.find((x) => x.id === mapId) || this.bridge.getSelectedMap();
+      const heroBanner = document.getElementById('ttwt-stage-hero-banner');
+      const heroImg = document.getElementById('ttwt-stage-hero-img') as HTMLImageElement | null;
+      const heroTag = document.getElementById('ttwt-stage-hero-tag');
+      const heroTitle = document.getElementById('ttwt-stage-hero-title');
+      const heroSub = document.getElementById('ttwt-stage-hero-sub');
+      const heroBadge = document.getElementById('ttwt-stage-hero-badge');
+
+      if (heroBanner) heroBanner.style.setProperty('--stage-accent', m.accentHex);
+      if (heroImg) heroImg.src = this.bridge.getMapSnapshotDataUrl(m.id);
+      if (heroTitle) heroTitle.textContent = m.name;
+      if (heroSub) heroSub.textContent = m.subtitle;
+      const isSelected = m.id === this.bridge.getSelectedMap().id;
+      if (heroTag) {
+        heroTag.textContent =
+          isHoverPreview && !isSelected ? '👁️ STAGE PREVIEW' : '★ ACTIVE ARENA STAGE';
+      }
+      if (heroBadge) {
+        heroBadge.innerHTML =
+          isHoverPreview && !isSelected
+            ? '<span>CLICK TO LOCK</span>'
+            : '<span>LOCKED IN</span>';
+      }
+    };
+
     document.querySelectorAll('.ttwt-map-option-card').forEach((card) => {
+      card.addEventListener('mouseenter', () => {
+        const mapId = (card as HTMLElement).getAttribute('data-map-id');
+        if (mapId) {
+          updateHeroStagePreview(mapId, true);
+        }
+      });
+
+      card.addEventListener('mouseleave', () => {
+        updateHeroStagePreview(this.bridge.getSelectedMap().id, false);
+      });
+
       card.addEventListener('click', () => {
         const mapId = (card as HTMLElement).getAttribute('data-map-id');
         if (!mapId) return;
         if (!this.bridge.canLocalSelectMap()) {
-          this.showToast('🔒 ONLY THE HOST CAN SELECT THE MAP!');
+          this.showToast('🔒 ONLY THE HOST CAN SELECT THE STAGE!');
           return;
         }
         if (typeof window.playSound === 'function') {

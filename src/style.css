@@ -675,24 +675,25 @@
 }
 
 .ttwt-mode-card-active {
-  background: linear-gradient(180deg, #2b1d52 0%, #170d30 100%);
-  border-color: #4f3a87;
+  background: linear-gradient(180deg, #2d1e57 0%, #140b2b 100%);
+  border-color: #553e91;
   box-shadow: 4px 4px 0px #000;
+  transform: skewX(-4deg);
 }
 
 .ttwt-mode-card-active.selected {
   border-color: var(--pp-yellow);
-  box-shadow: 0 0 12px rgba(255, 230, 0, 0.25), 4px 4px 0px #000;
+  box-shadow: 0 0 14px rgba(255, 230, 0, 0.28), 4px 4px 0px #000;
 }
 
 .ttwt-mode-card-active:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0px #000;
+  transform: skewX(-4deg) translate(-2px, -3px);
+  box-shadow: 6px 6px 0px #000, 0 0 14px rgba(0, 240, 255, 0.3);
   border-color: var(--pp-cyan);
 }
 
 .ttwt-mode-card-active:active {
-  transform: translate(2px, 2px);
+  transform: skewX(-4deg) translate(2px, 2px);
   box-shadow: 1px 1px 0px #000;
 }
 
@@ -706,8 +707,10 @@
   background: var(--pp-yellow);
   color: #000;
   border: 1.5px solid #000;
-  border-radius: 6px;
+  border-radius: 5px;
   font-weight: 900;
+  transform: skewX(-8deg);
+  box-shadow: 2px 2px 0px #000;
 }
 
 .ttwt-card-tag.cyan {
@@ -1245,6 +1248,126 @@
   color: var(--pp-pink);
 }
 
+/* 🏟️ Brawlhalla-Style HD Stage Select (Hero Banner + Slanted HD Thumbnails) */
+.ttwt-stage-select-section {
+  background: linear-gradient(180deg, #1b1035 0%, #100822 100%);
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0px #000;
+  gap: 10px;
+}
+
+.ttwt-stage-head-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ttwt-stage-section-icon {
+  font-size: 13px;
+}
+
+/* Cinematic 16:9 Stage Hero Preview Banner */
+.ttwt-stage-hero-banner {
+  --stage-accent: var(--pp-cyan);
+  position: relative;
+  width: 100%;
+  height: 118px;
+  border-radius: 12px;
+  border: 3px solid var(--stage-accent);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.2), 4px 4px 0px #000;
+  overflow: hidden;
+  background: #090414;
+}
+
+.ttwt-stage-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 56%;
+  display: block;
+  transform: scale(1.03);
+  transition: transform 0.25s ease;
+}
+
+.ttwt-stage-hero-banner:hover .ttwt-stage-hero-img {
+  transform: scale(1.07);
+}
+
+.ttwt-stage-hero-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(10, 5, 24, 0.92) 0%, rgba(10, 5, 24, 0.45) 48%, rgba(10, 5, 24, 0.15) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, rgba(8, 4, 20, 0.78) 100%);
+  pointer-events: none;
+}
+
+/* Brawlhalla Slanted Stage Plaque Overlay */
+.ttwt-stage-hero-plaque {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ttwt-stage-hero-tag {
+  align-self: flex-start;
+  background: var(--pp-yellow);
+  color: #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  font-weight: 900;
+  padding: 3px 7px;
+  border: 1.5px solid #000;
+  border-radius: 4px;
+  transform: skewX(-10deg);
+  box-shadow: 2px 2px 0px #000;
+}
+
+.ttwt-stage-hero-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  color: #ffffff;
+  text-shadow: 2px 2px 0px #000, 0 0 10px rgba(0, 0, 0, 0.9);
+  letter-spacing: 0.03em;
+}
+
+.ttwt-stage-hero-sub {
+  font-family: 'Fredoka', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--pp-cyan);
+  text-shadow: 1px 1px 0px #000;
+  letter-spacing: 0.05em;
+}
+
+.ttwt-stage-hero-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: rgba(15, 8, 34, 0.9);
+  border: 2px solid var(--stage-accent);
+  color: #fff;
+  padding: 4px 9px;
+  border-radius: 6px;
+  transform: skewX(-10deg);
+  box-shadow: 3px 3px 0px #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ttwt-stage-hero-badge span {
+  display: inline-block;
+  transform: skewX(10deg);
+}
+
+/* 5 Slanted HD Stage Thumbnail Strip */
 .ttwt-map-cards-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -1252,95 +1375,110 @@
 }
 
 .ttwt-map-option-card {
-  background: #110824;
-  border: 2.5px solid #35235e;
-  border-radius: 11px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  --tile-accent: var(--pp-cyan);
+  background: transparent;
+  border: none;
+  padding: 0;
   cursor: pointer;
-  transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
   font-family: inherit;
-  text-align: center;
+  text-align: left;
+  transform: skewX(-6deg);
+  transition: transform 0.14s ease, filter 0.14s ease;
 }
 
 .ttwt-map-option-card:hover:not(.readonly) {
-  transform: translateY(-2px);
-  border-color: var(--pp-cyan);
+  transform: skewX(-6deg) translateY(-3px) scale(1.02);
 }
 
 .ttwt-map-option-card.readonly {
   cursor: not-allowed;
-  opacity: 0.88;
+  opacity: 0.9;
 }
 
-.ttwt-map-option-card.selected {
-  border-color: var(--pp-yellow);
-  background: #281754;
-  box-shadow: 0 0 12px rgba(255, 230, 0, 0.35), 3px 3px 0px #000;
-}
-
-.ttwt-map-mini-preview {
+.ttwt-map-hd-frame {
   position: relative;
   width: 100%;
-  height: 44px;
-  border-radius: 7px;
-  border: 2px solid #000;
+  height: 74px;
+  border-radius: 10px;
+  border: 2.5px solid #382563;
   overflow: hidden;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 4px;
+  background: #0c061a;
+  box-shadow: 3px 3px 0px #000;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
-.ttwt-map-mini-table {
-  width: 76%;
-  height: 26px;
-  border: 1.5px solid #ffffff;
-  border-radius: 3px;
-  position: relative;
-  transform: perspective(60px) rotateX(28deg);
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.6);
+.ttwt-map-option-card:hover:not(.readonly) .ttwt-map-hd-frame {
+  border-color: var(--tile-accent);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35), 4px 4px 0px #000;
 }
 
-.ttwt-map-mini-net {
+.ttwt-map-option-card.selected .ttwt-map-hd-frame {
+  border-color: var(--pp-yellow);
+  box-shadow: 0 0 14px rgba(255, 230, 0, 0.48), 4px 4px 0px #000;
+}
+
+.ttwt-map-hd-thumb {
+  width: 112%;
+  height: 100%;
+  margin-left: -6%;
+  object-fit: cover;
+  object-position: center 58%;
+  display: block;
+  transform: skewX(6deg) scale(1.06);
+  transition: transform 0.2s ease;
+}
+
+.ttwt-map-option-card:hover .ttwt-map-hd-thumb {
+  transform: skewX(6deg) scale(1.14);
+}
+
+.ttwt-map-hd-shade {
   position: absolute;
-  top: 50%;
-  left: -2px;
-  right: -2px;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.85);
-}
-
-.ttwt-map-mini-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1.5px;
-  background: rgba(255, 255, 255, 0.75);
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 4, 18, 0.05) 0%,
+    rgba(8, 4, 18, 0.45) 48%,
+    rgba(8, 4, 18, 0.94) 100%
+  );
+  pointer-events: none;
 }
 
 .ttwt-map-selected-star {
   position: absolute;
-  top: 2px;
-  right: 3px;
+  top: 4px;
+  right: 5px;
   background: var(--pp-yellow);
   color: #000;
   font-family: 'Press Start 2P', monospace;
-  font-size: 7px;
-  padding: 1px 3px;
+  font-size: 5.5px;
+  padding: 2px 4px;
   border-radius: 4px;
-  border: 1px solid #000;
+  border: 1.5px solid #000;
+  box-shadow: 1.5px 1.5px 0px #000;
+  z-index: 2;
+}
+
+.ttwt-map-hd-caption {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 5px;
+  z-index: 2;
+  transform: skewX(6deg);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .ttwt-map-option-name {
   font-family: 'Press Start 2P', monospace;
-  font-size: 7px;
+  font-size: 6.5px;
   color: #fff;
-  margin-top: 2px;
+  text-shadow: 1px 1px 0px #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ttwt-map-option-card.selected .ttwt-map-option-name {
@@ -1348,10 +1486,14 @@
 }
 
 .ttwt-map-option-sub {
-  font-size: 8px;
-  font-weight: 700;
-  color: var(--pp-text-muted);
+  font-size: 7.5px;
+  font-weight: 800;
+  color: #cbd5e1;
+  text-shadow: 1px 1px 0px #000;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Paddle Color Swatches */

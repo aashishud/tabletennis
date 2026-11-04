@@ -151,6 +151,7 @@ export class MultiplayerBridge {
   private lastSentNormY = Number.NaN;
   private lastSentPaddleAt = 0;
   private tintedPaddleCache = new Map<string, HTMLCanvasElement>();
+  private mapSnapshotCache = new Map<string, string>();
   private lobbyListeners: Array<() => void> = [];
   private extraUserPaddles: ExtraPaddle[] = [];
   private extraEnemyPaddles: ExtraPaddle[] = [];
@@ -324,6 +325,201 @@ export class MultiplayerBridge {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
     }
+  }
+
+  /**
+   * Renders an authentic HD in-game snapshot of the given Arena Map directly from
+   * the loaded game sprite sheets (gym walls, parquet floor, 3D table, net, and atmospheric lighting).
+   */
+  public getMapSnapshotDataUrl(mapId: string): string {
+    const cached = this.mapSnapshotCache.get(mapId);
+    if (cached) return cached;
+
+    const mapCfg = ARENA_MAPS.find((m) => m.id === mapId) || ARENA_MAPS[0];
+    const assetLib = (window as any).assetLib;
+    const oImageIds = (window as any).oImageIds;
+
+    if (assetLib && oImageIds && typeof assetLib.getData === 'function') {
+      try {
+        const gameElements = assetLib.getData('gameElements');
+        const shadowData = assetLib.getData('shadow');
+        const img: HTMLImageElement | undefined = gameElements?.img;
+        const atlas = gameElements?.oData?.oAtlasData;
+
+        if (img && img.complete && img.naturalWidth > 0 && atlas) {
+          const w = 700;
+          const h = 420;
+          const baseY = 115; // Camera horizon matching in-game perspective
+          const c = document.createElement('canvas');
+          c.width = w;
+          c.height = h;
+          const cCtx = c.getContext('2d');
+
+          if (cCtx) {
+            cCtx.fillStyle = '#080512';
+            cCtx.fillRect(0, 0, w, h);
+
+            // 1. Hardwood Parquet Floor (tableBgBottom)
+            const floorRect = atlas[oImageIds.tableBgBottom];
+            if (floorRect) {
+              const tempTop = baseY - 220 + 193;
+              cCtx.drawImage(
+                img,
+                floorRect.x,
+                floorRect.y,
+                floorRect.width,
+                floorRect.height,
+                0,
+                tempTop,
+                w,
+                (h - tempTop) * 1.18
+              );
+            }
+
+            // 2. Arena Stadium Wall (tableBg0..4)
+            const wallRect = atlas[oImageIds[`tableBg${mapCfg.wallId}`]];
+            if (wallRect) {
+              cCtx.drawImage(
+                img,
+                wallRect.x,
+                wallRect.y,
+                wallRect.width,
+                wallRect.height,
+                0,
+                baseY - 205,
+                w,
+                wallRect.height
+              );
+            }
+
+            const table0Rect = atlas[oImageIds.table0];
+            const tableH = table0Rect ? table0Rect.height : 220;
+
+            // 3. 3D Floor Drop Shadow
+            if (shadowData?.img?.complete && shadowData.img.naturalWidth > 0) {
+              const sImg = shadowData.img;
+              cCtx.drawImage(
+                sImg,
+                0,
+                0,
+                sImg.width,
+                sImg.height,
+                w / 2 - sImg.width / 2,
+                baseY + tableH - 80,
+                sImg.width,
+                sImg.height
+              );
+            }
+
+            // 4. Table Legs
+            const legsRect = atlas[oImageIds.tableLegs];
+            if (legsRect) {
+              cCtx.drawImage(
+                img,
+                legsRect.x,
+                legsRect.y,
+                legsRect.width,
+                legsRect.height,
+                w / 2 - legsRect.width / 2,
+                baseY + tableH + 25,
+                legsRect.width,
+                legsRect.height
+              );
+            }
+
+            // 5. 3D Regulation Table Surface (table0..3)
+            const tblRect = atlas[oImageIds[`table${mapCfg.tableId}`]] || table0Rect;
+            if (tblRect) {
+              cCtx.drawImage(
+                img,
+                tblRect.x,
+                tblRect.y,
+                tblRect.width,
+                tblRect.height,
+                w / 2 - tblRect.width / 2,
+                baseY,
+                tblRect.width,
+                tblRect.height
+              );
+            }
+
+            // 6. Table Front Apron Edge
+            const edgeRect = atlas[oImageIds.tableEdge];
+            if (edgeRect) {
+              cCtx.drawImage(
+                img,
+                edgeRect.x,
+                edgeRect.y,
+                edgeRect.width,
+                edgeRect.height,
+                w / 2 - edgeRect.width / 2,
+                baseY + tableH,
+                edgeRect.width,
+                edgeRect.height
+              );
+            }
+
+            // 7. Net Brackets & Mesh Net
+            const netRect = atlas[oImageIds.net];
+            const clipRect = atlas[oImageIds.tableClip];
+            if (netRect) {
+              const netY = baseY - netRect.height + tableH * 0.282;
+              if (clipRect) {
+                cCtx.drawImage(
+                  img,
+                  clipRect.x,
+                  clipRect.y,
+                  clipRect.width,
+                  clipRect.height,
+                  w / 2 - clipRect.width / 2,
+                  netY + netRect.height - 3,
+                  clipRect.width,
+                  clipRect.height
+                );
+              }
+              cCtx.drawImage(
+                img,
+                netRect.x,
+                netRect.y,
+                netRect.width,
+                netRect.height,
+                w / 2 - netRect.width / 2,
+                netY,
+                netRect.width,
+                netRect.height
+              );
+            }
+
+            // 8. Map Atmospheric Tint & Brawler Arena Vignette
+            if (mapCfg.atmosphereTint) {
+              cCtx.fillStyle = mapCfg.atmosphereTint;
+              cCtx.fillRect(0, 0, w, h);
+            }
+
+            const vig = cCtx.createRadialGradient(w / 2, h * 0.5, h * 0.2, w / 2, h * 0.5, w * 0.65);
+            vig.addColorStop(0, 'rgba(0,0,0,0)');
+            vig.addColorStop(1, 'rgba(6, 4, 16, 0.55)');
+            cCtx.fillStyle = vig;
+            cCtx.fillRect(0, 0, w, h);
+
+            const dataUrl = c.toDataURL('image/jpeg', 0.9);
+            this.mapSnapshotCache.set(mapId, dataUrl);
+            return dataUrl;
+          }
+        }
+      } catch {
+        // Fallback below if canvas isn't ready yet
+      }
+    }
+
+    // Fallback SVG data URL while assets are still loading in the first second
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
+      <rect width="400" height="240" fill="${mapCfg.previewWallHex}"/>
+      <polygon points="90,95 310,95 355,195 45,195" fill="${mapCfg.previewTableHex}" stroke="#ffffff" stroke-width="4"/>
+      <line x1="200" y1="95" x2="200" y2="195" stroke="#ffffff" stroke-width="3"/>
+      <line x1="65" y1="140" x2="335" y2="140" stroke="rgba(255,255,255,0.85)" stroke-width="5"/>
+    </svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   }
 
   private hexToRgb(hex: string): [number, number, number] {
