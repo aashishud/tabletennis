@@ -97,9 +97,9 @@ export class LobbyOverlayUI {
     this.render();
   }
 
-  private getShareUrl(roomCode: string, asMockP2 = false): string {
+  private getShareUrl(roomCode: string): string {
     const base = `${window.location.origin}${window.location.pathname}`;
-    return asMockP2 ? `${base}?room=${roomCode}&mock=p2` : `${base}?room=${roomCode}`;
+    return `${base}?room=${roomCode}`;
   }
 
   private renderPaddleIconSvg(hex: string, size = 28): string {
@@ -380,15 +380,6 @@ export class LobbyOverlayUI {
               <button class="ttwt-btn ttwt-btn-cyan ttwt-pregame-copy-btn" id="ttwt-pregame-copy-btn" title="Copy invite link for friend">
                 🔗 INVITE
               </button>
-              ${
-                this.net.role === 'host' && !hasPeerInLobby && this.net.roomCode
-                  ? `
-                <button class="ttwt-btn ttwt-btn-pink ttwt-pregame-copy-btn" id="ttwt-pregame-spawn-btn" title="Open 2nd window as Player 2 for testing">
-                  🚀 TEST 2P
-                </button>
-              `
-                  : ''
-              }
             </div>
           </div>
 
@@ -663,18 +654,6 @@ export class LobbyOverlayUI {
                 LOGIN DISCORD
               </button>
             </div>
-
-            <div class="ttwt-mock-toggles">
-              <button class="ttwt-mock-chip ${user.username === 'sour' ? 'active' : ''}" data-mock="sour">
-                👑 MOCK: SOUR (P1)
-              </button>
-              <button class="ttwt-mock-chip ${user.username === 'player_two' ? 'active' : ''}" data-mock="player2">
-                🔥 MOCK: PLAYER 2 (P2)
-              </button>
-              <button class="ttwt-mock-chip ${user.username === 'kanto_ace' ? 'active' : ''}" data-mock="ace">
-                ⚡ MOCK: KANTO_ACE
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -691,15 +670,6 @@ export class LobbyOverlayUI {
       if ((e.target as HTMLElement)?.id === 'ttwt-modal-backdrop') {
         this.closeModal();
       }
-    });
-
-    document.querySelectorAll('.ttwt-mock-chip').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const preset = (btn as HTMLElement).getAttribute('data-mock') as 'sour' | 'player2' | 'ace';
-        if (preset) {
-          this.auth.loginWithMock(preset);
-        }
-      });
     });
 
     document.getElementById('ttwt-discord-oauth-btn')?.addEventListener('click', () => {
@@ -796,7 +766,7 @@ export class LobbyOverlayUI {
     // 🔗 Copy Invite Link in Pre-Game Lobby or HUD
     const copyRoomInvite = () => {
       if (!this.net.roomCode) return;
-      const inviteUrl = this.getShareUrl(this.net.roomCode, false);
+      const inviteUrl = this.getShareUrl(this.net.roomCode);
       navigator.clipboard
         .writeText(inviteUrl)
         .then(() => {
@@ -809,13 +779,6 @@ export class LobbyOverlayUI {
 
     document.getElementById('ttwt-hud-invite-btn')?.addEventListener('click', copyRoomInvite);
     document.getElementById('ttwt-pregame-copy-btn')?.addEventListener('click', copyRoomInvite);
-
-    // 🚀 Spawn 2P Test Window in Pre-Game Lobby
-    document.getElementById('ttwt-pregame-spawn-btn')?.addEventListener('click', () => {
-      if (!this.net.roomCode) return;
-      const url = this.getShareUrl(this.net.roomCode, true);
-      window.open(url, '_blank');
-    });
 
     // 🏟️ Map Selection Cards (Host click to lock in + All players hover to preview in HD Hero Banner)
     const updateHeroStagePreview = (mapId: string, isHoverPreview: boolean) => {

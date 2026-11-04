@@ -27,19 +27,6 @@
   color: var(--pp-text);
 }
 
-/* Subtle CRT Scanlines Overlay */
-#ttwt-ui-root::before {
-  content: " ";
-  display: block;
-  position: absolute;
-  top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 26, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-  background-size: 100% 4px;
-  z-index: 10000;
-  pointer-events: none;
-  opacity: 0.6;
-}
-
 /* 🕹️ Top-Left Retro Arcade Compact HUD */
 .ttwt-hud-bar {
   position: absolute;
@@ -419,42 +406,6 @@
   border: 3px solid var(--pp-yellow);
   box-shadow: var(--pp-shadow-sm);
   background: #1e1f22;
-}
-
-/* Mock Identity Chips */
-.ttwt-mock-toggles {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.ttwt-mock-chip {
-  background: #2b1a50;
-  border: 2px solid #000;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-family: 'Fredoka', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  cursor: pointer;
-  box-shadow: var(--pp-shadow-sm);
-  transition: all 0.08s ease;
-}
-
-.ttwt-mock-chip:hover {
-  background: #3d266e;
-}
-
-.ttwt-mock-chip.active {
-  background: var(--pp-cyan);
-  color: #000;
-  font-weight: 900;
-}
-
-.ttwt-mock-chip:active {
-  transform: translate(2px, 2px);
-  box-shadow: 0px 0px 0px #000;
 }
 
 /* Room Code Banner */
