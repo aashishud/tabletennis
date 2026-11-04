@@ -4,7 +4,7 @@ import {
   PADDLE_COLORS,
   type MultiplayerBridge,
 } from './multiplayer-bridge';
-import type { WebRTCRoomManager } from './network';
+import type { GameMode, GuestSide, WebRTCRoomManager } from './network';
 
 export class LobbyOverlayUI {
   private root: HTMLElement;
@@ -14,7 +14,7 @@ export class LobbyOverlayUI {
   private modalOpen = false;
   private inPreGameLobby = false;
   private currentGameState = 'start';
-  private statusText = 'READY PLAYER 1 — 1V1 RETRO ARCADE';
+  private statusText = 'READY PLAYER 1 — RETRO ARCADE';
 
   constructor(auth: DiscordAuthManager, net: WebRTCRoomManager, bridge: MultiplayerBridge) {
     this.auth = auth;
@@ -112,6 +112,113 @@ export class LobbyOverlayUI {
     `;
   }
 
+  private renderTeamRosterSlots(
+    teamSide: 'user' | 'enemy',
+    teamSize: number,
+    hasPeer: boolean,
+    guestSide: GuestSide,
+    localName: string,
+    localAvatar: string,
+    localHex: string,
+    remoteName: string,
+    remoteAvatar: string,
+    remoteHex: string
+  ): string {
+    const slots: Array<{
+      label: string;
+      name: string;
+      avatar: string;
+      paddleHex: string;
+      isBot: boolean;
+    }> = [];
+
+    const teamBotColors = ['#00ff66', '#ffe600', '#a855f7'];
+    const enemyBotColors = ['#ff6b00', '#ff007f', '#00f0ff', '#10b981'];
+
+    if (teamSide === 'user') {
+      // Slot 1 is always Local Player (You)
+      slots.push({
+        label: this.net.role === 'guest' ? '2P (YOU)' : '1P (YOU)',
+        name: localName,
+        avatar: localAvatar,
+        paddleHex: localHex,
+        isBot: false,
+      });
+
+      // If 2v2 or 4v4 and Guest chose SAME SIDE (Co-Op), Slot 2 is Remote Player!
+      if (teamSize > 1 && hasPeer && guestSide === 'same') {
+        slots.push({
+          label: this.net.role === 'guest' ? '1P PARTNER' : '2P PARTNER',
+          name: remoteName,
+          avatar: remoteAvatar,
+          paddleHex: remoteHex,
+          isBot: false,
+        });
+      }
+
+      // Fill remaining user team slots with AI Teammate Bots
+      let botIdx = 1;
+      while (slots.length < teamSize) {
+        slots.push({
+          label: `ALLY BOT ${botIdx}`,
+          name: `AI ALLY #${botIdx}`,
+          avatar: BOT_PROFILE.avatarUrl,
+          paddleHex: teamBotColors[(botIdx - 1) % teamBotColors.length],
+          isBot: true,
+        });
+        botIdx++;
+      }
+    } else {
+      // Opponent Team
+      if (hasPeer && (teamSize === 1 || guestSide === 'opposite')) {
+        slots.push({
+          label: this.net.role === 'guest' ? '1P HOST' : '2P RIVAL',
+          name: remoteName,
+          avatar: remoteAvatar,
+          paddleHex: remoteHex,
+          isBot: false,
+        });
+      }
+
+      // Fill remaining opponent team slots with AI Opponent Bots
+      let botIdx = 1;
+      while (slots.length < teamSize) {
+        slots.push({
+          label: teamSize === 1 ? 'AI BOT' : `RIVAL BOT ${botIdx}`,
+          name: teamSize === 1 ? 'AI BOT' : `AI BOT #${botIdx}`,
+          avatar: BOT_PROFILE.avatarUrl,
+          paddleHex:
+            teamSize === 1
+              ? remoteHex
+              : enemyBotColors[(botIdx - 1) % enemyBotColors.length],
+          isBot: true,
+        });
+        botIdx++;
+      }
+    }
+
+    return `
+      <div class="ttwt-roster-slots-list ${teamSize === 4 ? 'compact-4v4' : ''}">
+        ${slots
+          .map(
+            (s) => `
+          <div class="ttwt-roster-slot-chip ${s.isBot ? 'bot' : 'human'}">
+            <img class="ttwt-roster-slot-avatar" src="${s.avatar}" alt="${this.escapeHtml(s.name)}" />
+            <div class="ttwt-roster-slot-info">
+              <span class="ttwt-roster-slot-tag">${s.label}</span>
+              <span class="ttwt-roster-slot-name">${this.escapeHtml(s.name)}</span>
+            </div>
+            <div class="ttwt-roster-slot-paddle" title="Paddle Color">
+              ${this.renderPaddleIconSvg(s.paddleHex, teamSize === 4 ? 20 : 24)}
+            </div>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    `;
+  }
+
   public render() {
     const user = this.auth.getUser();
     const isConnected = this.net.status === 'connected';
@@ -128,6 +235,11 @@ export class LobbyOverlayUI {
     const showPreGame = this.currentGameState === 'start' && this.inPreGameLobby;
     const showForfeit = this.currentGameState === 'game';
 
+    const gameMode = this.bridge.gameMode;
+    const guestSide = this.bridge.guestSide;
+    const teamSize = this.bridge.getTeamSize();
+    const isCoOp = teamSize > 1 && guestSide === 'same';
+
     const canSelectMap = this.bridge.canLocalSelectMap();
     const selectedMap = this.bridge.getSelectedMap();
     const localColorObj =
@@ -135,8 +247,12 @@ export class LobbyOverlayUI {
     const botFallbackHex =
       this.bridge.localPaddleColor === '#00f0ff' ? '#ff007f' : '#00f0ff';
     const opponentPaddleHex = hasPeerInLobby ? this.bridge.remotePaddleColor : botFallbackHex;
-    const opponentColorObj =
-      PADDLE_COLORS.find((c) => c.hex === opponentPaddleHex) || PADDLE_COLORS[1];
+
+    const modeTitleMap: Record<GameMode, string> = {
+      '1v1': '1V1 BRAWL',
+      '2v2': '2V2 DOUBLES',
+      '4v4': '4V4 CHAOS',
+    };
 
     this.root.innerHTML = `
       <!-- 🕹️ Top-Left Retro Arcade HUD (Compact & Non-Obstructive) -->
@@ -181,36 +297,40 @@ export class LobbyOverlayUI {
       <!-- 🎮 First Page Retro Mode Dock (Positioned directly under "SELECT GAME MODE BELOW") -->
       <div class="ttwt-mode-dock ${showModeDock ? '' : 'ttwt-hidden'}" id="ttwt-mode-dock">
         <div class="ttwt-mode-dock-bar">
-          <div class="ttwt-mode-dock-badge">★ SELECT ARCADE MODE ★</div>
+          <div class="ttwt-mode-dock-badge">★ SELECT ARCADE MODE (AUTO-CREATES LOBBY) ★</div>
 
           <div class="ttwt-mode-cards-grid">
-            <!-- 🏓 1V1 MODE (PRIMARY) -->
-            <button class="ttwt-mode-card ttwt-mode-card-1v1" id="ttwt-launch-1v1-btn">
-              <div class="ttwt-card-tag">AUTO-ROOM</div>
+            <!-- 🏓 1V1 MODE -->
+            <button class="ttwt-mode-card ttwt-mode-card-active ${
+              gameMode === '1v1' ? 'selected' : ''
+            }" data-launch-mode="1v1" id="ttwt-launch-1v1-btn">
+              <div class="ttwt-card-tag">1V1</div>
               <div class="ttwt-card-icon">🏓</div>
               <div class="ttwt-card-title">1V1 BRAWL</div>
-              <div class="ttwt-card-desc">${
-                activeRoomCode ? `OPEN LOBBY ${activeRoomCode}` : 'PRE-GAME LOBBY • BOT OR 1V1'
-              }</div>
-              <div class="ttwt-card-action">► ENTER LOBBY ◄</div>
+              <div class="ttwt-card-desc">SOLO VS BOT OR 1V1 P2P DUEL</div>
+              <div class="ttwt-card-action">► ENTER 1V1 ◄</div>
             </button>
 
-            <!-- 👥 2V2 MODE (SOON) -->
-            <button class="ttwt-mode-card ttwt-mode-card-locked" id="ttwt-launch-2v2-btn" title="Coming soon!">
-              <div class="ttwt-card-tag soon">SOON</div>
+            <!-- 👥 2V2 MODE (UNLOCKED!) -->
+            <button class="ttwt-mode-card ttwt-mode-card-active ${
+              gameMode === '2v2' ? 'selected' : ''
+            }" data-launch-mode="2v2" id="ttwt-launch-2v2-btn">
+              <div class="ttwt-card-tag cyan">2V2</div>
               <div class="ttwt-card-icon">👥</div>
               <div class="ttwt-card-title">2V2 DOUBLES</div>
-              <div class="ttwt-card-desc">CO-OP TEAMS & SIDE PICK</div>
-              <div class="ttwt-card-action locked">LOCKED</div>
+              <div class="ttwt-card-desc">CO-OP SAME SIDE OR VS + AI BOTS</div>
+              <div class="ttwt-card-action">► ENTER 2V2 ◄</div>
             </button>
 
-            <!-- 💥 4V4 MODE (SOON) -->
-            <button class="ttwt-mode-card ttwt-mode-card-locked" id="ttwt-launch-4v4-btn" title="Coming soon!">
-              <div class="ttwt-card-tag soon">SOON</div>
+            <!-- 💥 4V4 MODE (UNLOCKED!) -->
+            <button class="ttwt-mode-card ttwt-mode-card-active ${
+              gameMode === '4v4' ? 'selected' : ''
+            }" data-launch-mode="4v4" id="ttwt-launch-4v4-btn">
+              <div class="ttwt-card-tag pink">4V4</div>
               <div class="ttwt-card-icon">💥</div>
               <div class="ttwt-card-title">4V4 CHAOS</div>
-              <div class="ttwt-card-desc">8-PADDLE ARCADE MAYHEM</div>
-              <div class="ttwt-card-action locked">LOCKED</div>
+              <div class="ttwt-card-desc">8-PADDLE SQUAD MAYHEM + BOTS</div>
+              <div class="ttwt-card-action">► ENTER 4V4 ◄</div>
             </button>
           </div>
 
@@ -232,7 +352,7 @@ export class LobbyOverlayUI {
         </div>
       </div>
 
-      <!-- 🏟️ PRE-GAME LOBBY SCREEN (Map Selection + Paddle Color Picker + Waiting Room) -->
+      <!-- 🏟️ PRE-GAME LOBBY SCREEN (Mode + Side Picker + Map Selection + Paddle Color Picker) -->
       <div class="ttwt-pregame-backdrop ${showPreGame ? '' : 'ttwt-hidden'}" id="ttwt-pregame-screen">
         <div class="ttwt-pregame-cabinet">
           <!-- Header Row -->
@@ -242,12 +362,12 @@ export class LobbyOverlayUI {
             </button>
 
             <div class="ttwt-pregame-title-wrap">
-              <div class="ttwt-pregame-main-title">★ 1V1 PRE-GAME LOBBY ★</div>
+              <div class="ttwt-pregame-main-title">★ ${modeTitleMap[gameMode]} LOBBY ★</div>
               <div class="ttwt-pregame-sub-title">
                 ${
                   hasPeerInLobby
-                    ? 'PLAYER 2 IN LOBBY! READY TO BRAWL!'
-                    : 'WAITING FOR PLAYER 2 • OR START NOW VS AI BOT'
+                    ? `PLAYER 2 JOINED! EMPTY SLOTS FILLED BY AI BOTS`
+                    : `WAITING FOR PLAYER 2 • ALL OTHER SLOTS ARE AI BOTS`
                 }
               </div>
             </div>
@@ -272,64 +392,119 @@ export class LobbyOverlayUI {
             </div>
           </div>
 
-          <!-- Players VS Row -->
+          <!-- 🎮 Mode Switcher & 2v2/4v4 Side Selection Bar -->
+          <div class="ttwt-pregame-mode-bar">
+            <div class="ttwt-mode-pills-group">
+              <span class="ttwt-bar-mini-label">MODE:</span>
+              ${(['1v1', '2v2', '4v4'] as GameMode[])
+                .map(
+                  (m) => `
+                <button
+                  class="ttwt-mode-switch-pill ${gameMode === m ? 'active' : ''} ${
+                    canSelectMap ? '' : 'readonly'
+                  }"
+                  data-switch-mode="${m}"
+                >
+                  ${m.toUpperCase()}
+                </button>
+              `
+                )
+                .join('')}
+            </div>
+
+            ${
+              teamSize > 1
+                ? `
+              <div class="ttwt-side-pills-group">
+                <span class="ttwt-bar-mini-label">P2 SIDE:</span>
+                <button
+                  class="ttwt-side-switch-pill ${guestSide === 'opposite' ? 'active vs' : ''}"
+                  data-guest-side="opposite"
+                  title="Player 1 and Player 2 play on opposite sides against each other (+ Bot teammates)"
+                >
+                  ⚔️ OPPOSITE SIDES (VS)
+                </button>
+                <button
+                  class="ttwt-side-switch-pill ${guestSide === 'same' ? 'active coop' : ''}"
+                  data-guest-side="same"
+                  title="Player 1 and Player 2 team up on the SAME side vs AI Bots!"
+                >
+                  🤝 SAME SIDE (CO-OP)
+                </button>
+              </div>
+            `
+                : ''
+            }
+          </div>
+
+          <!-- Teams VS Roster Row -->
           <div class="ttwt-pregame-players-row">
-            <!-- Local Player (You) -->
+            <!-- Left Team: Bottom Table Side (Your Squad) -->
             <div class="ttwt-pregame-player-card local">
-              <div class="ttwt-player-role-tag ${this.net.role === 'guest' ? 'guest' : 'host'}">
-                ${this.net.role === 'guest' ? '2P • GUEST (YOU)' : '1P • HOST (YOU)'}
+              <div class="ttwt-team-header-row">
+                <span class="ttwt-player-role-tag host">
+                  ${
+                    teamSize === 1
+                      ? this.net.role === 'guest'
+                        ? '2P • GUEST (YOU)'
+                        : '1P • HOST (YOU)'
+                      : isCoOp
+                      ? `🤝 CO-OP HOME TEAM (${teamSize}P)`
+                      : `🏠 YOUR SQUAD (${teamSize}P)`
+                  }
+                </span>
+                <span class="ttwt-team-sub-status">BOTTOM TABLE</span>
               </div>
-              <div class="ttwt-player-card-main">
-                <img class="ttwt-player-card-avatar" src="${user.avatarUrl}" alt="${user.displayName}" />
-                <div class="ttwt-player-card-meta">
-                  <div class="ttwt-player-card-name">${this.escapeHtml(user.displayName)}</div>
-                  <div class="ttwt-player-card-status">READY TO SERVE</div>
-                </div>
-                <div class="ttwt-player-paddle-badge" title="Your Paddle: ${localColorObj.name}">
-                  ${this.renderPaddleIconSvg(this.bridge.localPaddleColor, 34)}
-                  <span>${localColorObj.name}</span>
-                </div>
-              </div>
+              ${this.renderTeamRosterSlots(
+                'user',
+                teamSize,
+                hasPeerInLobby,
+                guestSide,
+                user.displayName,
+                user.avatarUrl,
+                this.bridge.localPaddleColor,
+                remote ? remote.displayName : 'PLAYER 2',
+                remote ? remote.avatarUrl : BOT_PROFILE.avatarUrl,
+                opponentPaddleHex
+              )}
             </div>
 
             <div class="ttwt-pregame-vs-pill">VS</div>
 
-            <!-- Opponent (Player 2 or AI Bot Fallback) -->
-            <div class="ttwt-pregame-player-card opponent ${hasPeerInLobby ? 'human' : 'bot'}">
-              <div class="ttwt-player-role-tag ${hasPeerInLobby ? 'guest' : 'bot'}">
-                ${
-                  hasPeerInLobby
-                    ? this.net.role === 'guest'
-                      ? '1P • HOST'
-                      : '2P • CHALLENGER'
-                    : '🤖 AI BOT (IF SOLO)'
-                }
+            <!-- Right Team: Top Table Side (Opponent Squad) -->
+            <div class="ttwt-pregame-player-card opponent ${
+              hasPeerInLobby && !isCoOp ? 'human' : 'bot'
+            }">
+              <div class="ttwt-team-header-row">
+                <span class="ttwt-player-role-tag ${
+                  hasPeerInLobby && !isCoOp ? 'guest' : 'bot'
+                }">
+                  ${
+                    teamSize === 1
+                      ? hasPeerInLobby
+                        ? '2P • CHALLENGER'
+                        : '🤖 AI BOT (IF SOLO)'
+                      : isCoOp
+                      ? `🤖 AI BOT SQUAD (${teamSize}x BOTS)`
+                      : hasPeerInLobby
+                      ? `⚔️ RIVAL SQUAD (P2 + BOTS)`
+                      : `🤖 AI BOT SQUAD (${teamSize}x BOTS)`
+                  }
+                </span>
+                <span class="ttwt-team-sub-status">TOP TABLE</span>
               </div>
-              <div class="ttwt-player-card-main">
-                <img
-                  class="ttwt-player-card-avatar"
-                  src="${hasPeerInLobby && remote ? remote.avatarUrl : BOT_PROFILE.avatarUrl}"
-                  alt="Opponent"
-                />
-                <div class="ttwt-player-card-meta">
-                  <div class="ttwt-player-card-name">
-                    ${hasPeerInLobby && remote ? this.escapeHtml(remote.displayName) : 'AI BOT'}
-                  </div>
-                  <div class="ttwt-player-card-status ${hasPeerInLobby ? 'online' : 'waiting'}">
-                    ${
-                      hasPeerInLobby
-                        ? isConnected
-                          ? '⚡ P2P LINKED'
-                          : '⏳ HANDSHAKING...'
-                        : 'WAITING FOR P2 JOIN...'
-                    }
-                  </div>
-                </div>
-                <div class="ttwt-player-paddle-badge" title="Opponent Paddle: ${opponentColorObj.name}">
-                  ${this.renderPaddleIconSvg(opponentPaddleHex, 34)}
-                  <span>${opponentColorObj.name}</span>
-                </div>
-              </div>
+              ${this.renderTeamRosterSlots(
+                'enemy',
+                teamSize,
+                hasPeerInLobby,
+                guestSide,
+                user.displayName,
+                user.avatarUrl,
+                this.bridge.localPaddleColor,
+                remote ? remote.displayName : 'AI BOT',
+                remote ? remote.avatarUrl : BOT_PROFILE.avatarUrl,
+                opponentPaddleHex
+              )}
             </div>
           </div>
 
@@ -407,8 +582,14 @@ export class LobbyOverlayUI {
             <button class="ttwt-btn ttwt-btn-arcade ttwt-pregame-start-btn" id="ttwt-pregame-start-btn">
               ${
                 hasPeerInLobby
-                  ? `🏓 START 1V1 MATCH VS ${this.escapeHtml(remote!.displayName.toUpperCase())}!`
-                  : '🏓 START GAME (VS AI BOT)'
+                  ? isCoOp
+                    ? `🤝 START ${gameMode.toUpperCase()} CO-OP WITH ${this.escapeHtml(
+                        remote!.displayName.toUpperCase()
+                      )} VS AI BOTS!`
+                    : `⚔️ START ${gameMode.toUpperCase()} MATCH VS ${this.escapeHtml(
+                        remote!.displayName.toUpperCase()
+                      )}!`
+                  : `🏓 START ${gameMode.toUpperCase()} MATCH (EMPTY SLOTS = AI BOTS)`
               }
             </button>
           </div>
@@ -498,40 +679,58 @@ export class LobbyOverlayUI {
       }
     });
 
-    // 🏓 1v1 Mode Card on Start Screen -> Opens Pre-Game Lobby & Auto-Creates Room
-    document.getElementById('ttwt-launch-1v1-btn')?.addEventListener('click', async () => {
-      if (typeof window.playSound === 'function') {
-        window.playSound('hit0');
-      }
+    // 🎮 1V1 / 2V2 / 4V4 Mode Cards on Start Screen -> Sets Mode, Opens Pre-Game Lobby & Auto-Creates Room
+    document.querySelectorAll('[data-launch-mode]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const mode = (btn as HTMLElement).getAttribute('data-launch-mode') as GameMode | null;
+        if (!mode) return;
 
-      this.openPreGameLobby();
+        if (typeof window.playSound === 'function') {
+          window.playSound('hit0');
+        }
 
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlRoom = urlParams.get('room')?.toUpperCase().trim();
+        this.bridge.setGameMode(mode);
+        this.openPreGameLobby();
 
-      if (urlRoom && !this.net.roomCode) {
-        await this.net.joinRoom(urlRoom);
-      } else if (!this.net.roomCode) {
-        const code = await this.net.createRoom();
-        window.history.replaceState(null, '', `?room=${code}`);
-        this.render();
-      }
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlRoom = urlParams.get('room')?.toUpperCase().trim();
+
+        if (urlRoom && !this.net.roomCode) {
+          await this.net.joinRoom(urlRoom);
+        } else if (!this.net.roomCode) {
+          const code = await this.net.createRoom();
+          window.history.replaceState(null, '', `?room=${code}`);
+          this.render();
+        }
+      });
     });
 
-    // 👥 2V2 & 💥 4V4 Coming Soon Buttons
-    const showSoonNotice = (modeName: string) => {
-      if (typeof window.playSound === 'function') {
-        window.playSound('hit3');
-      }
-      this.showToast(`👥 ${modeName} COMING SOON!\nPLAY 1V1 BRAWL FOR NOW!`);
-    };
-
-    document.getElementById('ttwt-launch-2v2-btn')?.addEventListener('click', () => {
-      showSoonNotice('2V2 DOUBLES');
+    // 🎮 Mode Switcher inside Pre-Game Lobby (Host only when in room)
+    document.querySelectorAll('[data-switch-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = (btn as HTMLElement).getAttribute('data-switch-mode') as GameMode | null;
+        if (!mode) return;
+        if (!this.bridge.canLocalSelectMap()) {
+          this.showToast('🔒 ONLY THE HOST CAN SWITCH GAME MODE!');
+          return;
+        }
+        if (typeof window.playSound === 'function') {
+          window.playSound('hit2');
+        }
+        this.bridge.setGameMode(mode);
+      });
     });
 
-    document.getElementById('ttwt-launch-4v4-btn')?.addEventListener('click', () => {
-      showSoonNotice('4V4 CHAOS');
+    // ⚔️ / 🤝 Player 2 Side Selector in 2v2 & 4v4 (Either player can toggle!)
+    document.querySelectorAll('[data-guest-side]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const side = (btn as HTMLElement).getAttribute('data-guest-side') as GuestSide | null;
+        if (!side) return;
+        if (typeof window.playSound === 'function') {
+          window.playSound('hit4');
+        }
+        this.bridge.setGuestSide(side);
+      });
     });
 
     // Quick Join with Code on Start Screen -> Joins Room & Opens Pre-Game Lobby

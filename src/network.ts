@@ -2,6 +2,8 @@ import type { PlayerIdentity } from './auth';
 
 export type NetworkRole = 'host' | 'guest' | null;
 export type ConnectionStatus = 'disconnected' | 'waiting_for_peer' | 'handshaking' | 'connected' | 'error';
+export type GameMode = '1v1' | '2v2' | '4v4';
+export type GuestSide = 'opposite' | 'same';
 
 export interface PaddleMovePacket {
   type: 'PADDLE_MOVE';
@@ -13,6 +15,8 @@ export interface PaddleMovePacket {
 export interface BallHitPacket {
   type: 'BALL_HIT';
   isServe: boolean;
+  coOpSameSide?: boolean;
+  fromEnemyBot?: boolean;
   tablePosX: number;
   tablePosY: number;
   height: number;
@@ -47,6 +51,8 @@ export interface MatchControlPacket {
   type: 'MATCH_START' | 'MATCH_REMATCH' | 'MATCH_FORFEIT' | 'PLAYER_INFO' | 'PING' | 'PONG';
   playerInfo?: PlayerIdentity;
   timestamp?: number;
+  gameMode?: GameMode;
+  guestSide?: GuestSide;
   cupId?: number;
   gameId?: number;
   mapId?: string;
@@ -57,6 +63,8 @@ export interface MatchControlPacket {
 
 export interface LobbyUpdatePacket {
   type: 'LOBBY_UPDATE';
+  gameMode?: GameMode;
+  guestSide?: GuestSide;
   mapId?: string;
   paddleColor?: string;
   senderRole?: 'host' | 'guest' | null;

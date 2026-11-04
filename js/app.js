@@ -1581,6 +1581,9 @@ var Elements;
             };
         };
         UserBat.prototype.render = function () {
+            if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderExtraUserPaddles === "function") {
+                window.TTWTMultiplayer.renderExtraUserPaddles(ctx, this);
+            }
             ctx.save();
             ctx.translate(this.x, this.y - 20 * this.scale);
             ctx.scale(this.scale, this.scale * Math.min(1 - ((this.y - canvas.height * .5) / (canvas.height * .5)) * .3, 1));
@@ -1815,6 +1818,9 @@ var Elements;
                 window.TTWTMultiplayer.drawTintedPaddleRubber(ctx, this.oGameElementsImgData.img, edgeData.x, edgeData.y, edgeData.width, edgeData.height, -edgeData.width / 2, -edgeData.height / 3 - 23, "enemy");
             }
             ctx.restore();
+            if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.renderExtraEnemyPaddles === "function") {
+                window.TTWTMultiplayer.renderExtraEnemyPaddles(ctx, this);
+            }
             if(window.TTWTMultiplayer && window.TTWTMultiplayer.renderEnemyIdentity) {
                 window.TTWTMultiplayer.renderEnemyIdentity(ctx, this);
             }
@@ -1887,7 +1893,11 @@ var Elements;
             });
         };
         Ball.prototype.enemyServe = function () {
-            this.setBouncePoint(enemyBat.getHitData(this.tablePosX, this.tablePosY));
+            var serveHitData = enemyBat.getHitData(this.tablePosX, this.tablePosY);
+            this.setBouncePoint(serveHitData);
+            if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.onEnemyBotBallHit === "function") {
+                window.TTWTMultiplayer.onEnemyBotBallHit(this, serveHitData, true);
+            }
         };
         Ball.prototype.setBouncePoint = function (_oTargBouncePoints) {
             this.spin = _oTargBouncePoints.spin;
@@ -2084,7 +2094,11 @@ var Elements;
                     this.servingState = 2;
                     this.bounceNum = 0;
                     this.lastHit = "enemy";
-                    this.setBouncePoint(enemyBat.getHitData(this.tablePosX, this.tablePosY));
+                    var botHitData = enemyBat.getHitData(this.tablePosX, this.tablePosY);
+                    this.setBouncePoint(botHitData);
+                    if(window.TTWTMultiplayer && typeof window.TTWTMultiplayer.onEnemyBotBallHit === "function") {
+                        window.TTWTMultiplayer.onEnemyBotBallHit(this, botHitData, false);
+                    }
                 }
             }
         };

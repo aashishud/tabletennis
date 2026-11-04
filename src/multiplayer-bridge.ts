@@ -2,7 +2,9 @@ import { BOT_PROFILE, type DiscordAuthManager, type PlayerIdentity } from './aut
 import type {
   BallHitPacket,
   BallMissPacket,
+  GameMode,
   GamePacket,
+  GuestSide,
   PointResultPacket,
   WebRTCRoomManager,
 } from './network';
@@ -119,8 +121,23 @@ export const PADDLE_COLORS: PaddleColorOption[] = [
   { id: 'white', name: 'FROST WHITE', hex: '#f8fafc' },
 ];
 
+export interface ExtraPaddle {
+  index: number;
+  side: 'user' | 'enemy';
+  isNetworkTeammate: boolean;
+  label: string;
+  colorHex: string;
+  x: number;
+  y: number;
+  rotation: number;
+  scale: number;
+  laneOffsetX: number;
+}
+
 export class MultiplayerBridge {
   public mode: ControlMode = 'BOT_MODE';
+  public gameMode: GameMode = '1v1';
+  public guestSide: GuestSide = 'opposite';
   public peerPaused = false;
   public selectedMapId: string = 'classic';
   public localPaddleColor: string = '#ef4444';
@@ -135,6 +152,11 @@ export class MultiplayerBridge {
   private lastSentPaddleAt = 0;
   private tintedPaddleCache = new Map<string, HTMLCanvasElement>();
   private lobbyListeners: Array<() => void> = [];
+  private extraUserPaddles: ExtraPaddle[] = [];
+  private extraEnemyPaddles: ExtraPaddle[] = [];
+  private coopPartnerTargX = 110;
+  private coopPartnerTargY = 0;
+  private lastExtraBotHitAt = 0;
 
   constructor(auth: DiscordAuthManager, net: WebRTCRoomManager) {
     this.auth = auth;
@@ -167,7 +189,7 @@ export class MultiplayerBridge {
     this.net.onPacket((packet) => this.handlePacket(packet));
     this.net.onStatusChange((status) => {
       if (status === 'connected') {
-        this.setMode('NETWORK_MODE');
+        this.setMode(this.isCoOpSameSide() ? 'BOT_MODE' : 'NETWORK_MODE');
         this.broadcastLobbyState();
       } else if (status === 'disconnected' || status === 'error') {
         this.setMode('BOT_MODE');
@@ -216,6 +238,37 @@ export class MultiplayerBridge {
     return this.net.role !== 'guest';
   }
 
+  public getTeamSize(): number {
+    if (this.gameMode === '2v2') return 2;
+    if (this.gameMode === '4v4') return 4;
+    return 1;
+  }
+
+  public isCoOpSameSide(): boolean {
+    return (
+      this.gameMode !== '1v1' &&
+      this.guestSide === 'same' &&
+      this.net.status === 'connected'
+    );
+  }
+
+  public setGameMode(mode: GameMode) {
+    if (!this.canLocalSelectMap()) return;
+    this.gameMode = mode;
+    if (mode === '1v1') {
+      this.guestSide = 'opposite';
+    }
+    this.broadcastLobbyState();
+    this.notifyLobbyListeners();
+  }
+
+  public setGuestSide(side: GuestSide) {
+    if (this.gameMode === '1v1') return;
+    this.guestSide = side;
+    this.broadcastLobbyState();
+    this.notifyLobbyListeners();
+  }
+
   public setSelectedMap(mapId: string) {
     if (!this.canLocalSelectMap()) return;
     if (!ARENA_MAPS.some((m) => m.id === mapId)) return;
@@ -239,6 +292,8 @@ export class MultiplayerBridge {
     if (!this.net.roomCode) return;
     this.net.sendReliable({
       type: 'LOBBY_UPDATE',
+      gameMode: this.canLocalSelectMap() ? this.gameMode : undefined,
+      guestSide: this.guestSide,
       mapId: this.canLocalSelectMap() ? this.selectedMapId : undefined,
       paddleColor: this.localPaddleColor,
       senderRole: this.net.role,
@@ -291,9 +346,11 @@ export class MultiplayerBridge {
     bHeight: number,
     destX: number,
     destY: number,
-    who: 'user' | 'enemy'
+    who: 'user' | 'enemy',
+    customHexOverride?: string
   ) {
-    const targetHex = who === 'user' ? this.localPaddleColor : this.remotePaddleColor;
+    const targetHex =
+      customHexOverride || (who === 'user' ? this.localPaddleColor : this.remotePaddleColor);
     const cacheKey = `${targetHex}:${bX}:${bY}:${bWidth}:${bHeight}`;
     let offCanvas = this.tintedPaddleCache.get(cacheKey);
 
@@ -373,9 +430,61 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Starts a 1v1 match immediately. If Player 2 is already connected, starts in NETWORK_MODE.
-   * If alone, starts in BOT_MODE so the player can play instantly, while the room stays ready
-   * in the background for a friend to drop in anytime!
+   * Initializes extra teammate and opponent paddles for 2v2 (1 extra per side)
+   * and 4v4 (3 extra per side).
+   */
+  private initExtraPaddles() {
+    const canvas = window.canvas;
+    const cx = canvas ? canvas.width / 2 : 350;
+    const cyBottom = canvas ? canvas.height - 150 : 450;
+    const cyTop = canvas ? canvas.height / 4 - 35 : 130;
+
+    const extraCount = this.getTeamSize() - 1;
+    this.extraUserPaddles = [];
+    this.extraEnemyPaddles = [];
+    if (extraCount <= 0) return;
+
+    const laneOffsets = extraCount === 1 ? [125] : [-165, -60, 165];
+    const teamColors = ['#00ff66', '#ffe600', '#a855f7'];
+    const enemyColors = ['#ff6b00', '#ff007f', '#00f0ff'];
+
+    for (let i = 0; i < extraCount; i++) {
+      const isNetworkPartner = i === 0 && this.isCoOpSameSide();
+      const partnerName =
+        this.net.remotePlayer?.displayName?.slice(0, 7).toUpperCase() || '2P';
+      this.extraUserPaddles.push({
+        index: i,
+        side: 'user',
+        isNetworkTeammate: isNetworkPartner,
+        label: isNetworkPartner ? partnerName : `BOT ${i + 1}`,
+        colorHex: isNetworkPartner
+          ? this.remotePaddleColor
+          : teamColors[i % teamColors.length],
+        x: cx + laneOffsets[i],
+        y: cyBottom,
+        rotation: laneOffsets[i] / 220,
+        scale: 0.72,
+        laneOffsetX: laneOffsets[i],
+      });
+
+      this.extraEnemyPaddles.push({
+        index: i,
+        side: 'enemy',
+        isNetworkTeammate: false,
+        label: `BOT ${i + 2}`,
+        colorHex: enemyColors[i % enemyColors.length],
+        x: cx - laneOffsets[i],
+        y: cyTop,
+        rotation: -laneOffsets[i] / 220,
+        scale: 0.42,
+        laneOffsetX: -laneOffsets[i],
+      });
+    }
+  }
+
+  /**
+   * Starts a match (1v1, 2v2, or 4v4). If Player 2 is connected, starts synchronized match.
+   * If alone, starts with AI Bots filling all remaining slots on both sides!
    */
   public start1v1Match() {
     window.firstRun = false;
@@ -391,6 +500,7 @@ export class MultiplayerBridge {
       } else if (typeof window.initGame === 'function') {
         window.initGame(true);
       }
+      this.initExtraPaddles();
     }
   }
 
@@ -399,7 +509,7 @@ export class MultiplayerBridge {
    * In multiplayer, sends a MATCH_FORFEIT packet so the opponent is awarded the win.
    */
   public forfeitOrExitMatch() {
-    if (this.mode === 'NETWORK_MODE' && this.net.status === 'connected') {
+    if (this.net.status === 'connected' && !this.isCoOpSameSide()) {
       this.net.sendReliable({
         type: 'MATCH_FORFEIT',
         by: this.net.role,
@@ -416,7 +526,7 @@ export class MultiplayerBridge {
       return;
     }
 
-    // In single player vs Bot:
+    // In single player vs Bot or Co-Op vs Bot:
     this.setMode('BOT_MODE');
     if (typeof window.initStartScreen === 'function') {
       window.initStartScreen();
@@ -424,13 +534,15 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Starts a synchronized 1v1 Multiplayer Match on both Host and Guest canvases.
+   * Starts a synchronized Multiplayer Match (1v1, 2v2, or 4v4) on both Host and Guest canvases.
    */
   public startMultiplayerMatch(asInitiator = true) {
-    this.setMode('NETWORK_MODE');
+    const coOp = this.isCoOpSameSide();
+    // In Co-Op Same-Side mode, top side is controlled by AI Bots (`BOT_MODE`)!
+    this.setMode(coOp ? 'BOT_MODE' : 'NETWORK_MODE');
     this.applyMapToActiveGame();
 
-    // Ensure tutorial overlay is skipped for 1v1 multiplayer matches
+    // Ensure tutorial overlay is skipped for multiplayer matches
     window.firstRun = false;
     if (window.oGameData) {
       if (window.oGameData.userId === null || window.oGameData.userId === 1234) {
@@ -444,6 +556,8 @@ export class MultiplayerBridge {
     if (asInitiator && this.net.status === 'connected') {
       this.net.sendReliable({
         type: 'MATCH_START',
+        gameMode: this.gameMode,
+        guestSide: this.guestSide,
         mapId: this.selectedMapId,
         hostPaddleColor: this.net.role === 'host' ? this.localPaddleColor : this.remotePaddleColor,
         guestPaddleColor: this.net.role === 'guest' ? this.localPaddleColor : this.remotePaddleColor,
@@ -458,16 +572,18 @@ export class MultiplayerBridge {
       window.initGame(true);
     }
 
-    // Configure initial serve: Host serves first ('user' on Host, 'enemy' on Guest)
+    this.initExtraPaddles();
+
+    // Configure initial serve: Host serves first ('user' on Host, 'enemy' on Guest unless Co-Op same side)
     setTimeout(() => {
       if (window.enemyBat) {
-        window.enemyBat.controlMode = 'NETWORK_MODE';
+        window.enemyBat.controlMode = coOp ? 'BOT_MODE' : 'NETWORK_MODE';
         window.enemyBat.networkTargX = 0;
         window.enemyBat.networkTargY = 0;
       }
       if (window.ball) {
-        const initialServer = this.net.role === 'guest' ? 'enemy' : 'user';
-        window.ball.serveFlip = this.net.role !== 'guest';
+        const initialServer = !coOp && this.net.role === 'guest' ? 'enemy' : 'user';
+        window.ball.serveFlip = coOp ? true : this.net.role !== 'guest';
         window.ball.resetServe(initialServer);
       }
     }, 30);
@@ -475,13 +591,20 @@ export class MultiplayerBridge {
 
   /**
    * Called every animation frame from `updateGameEvent()` in `js/app.js`.
-   * Streams normalized local paddle coordinates over the WebRTC fast UDP channel.
+   * Updates extra 2v2 / 4v4 paddles and streams local paddle coordinates over WebRTC.
    */
   public onFrameTick() {
-    if (this.net.status === 'connected' && this.mode !== 'NETWORK_MODE') {
-      this.setMode('NETWORK_MODE');
+    this.updateExtraPaddles();
+
+    const coOp = this.isCoOpSameSide();
+    if (this.net.status === 'connected') {
+      const desiredMode: ControlMode = coOp ? 'BOT_MODE' : 'NETWORK_MODE';
+      if (this.mode !== desiredMode) {
+        this.setMode(desiredMode);
+      }
     }
-    if (this.mode !== 'NETWORK_MODE' || this.net.status !== 'connected') return;
+    if (this.net.status !== 'connected') return;
+
     const canvas = window.canvas;
     const userBat = window.userBat;
     if (!canvas || !userBat) return;
@@ -512,18 +635,264 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Called when local `userBat` serves or returns the ball in `js/app.js`.
+   * Updates extra bottom (teammate) and top (opponent) paddles for 2v2 and 4v4 modes,
+   * including AI Teammate Bot returns and Extra AI Opponent Bot returns.
+   */
+  private updateExtraPaddles() {
+    if (this.gameMode === '1v1') return;
+    const canvas = window.canvas;
+    const ball = window.ball;
+    const userBat = window.userBat;
+    const enemyBat = window.enemyBat;
+    const tableTop = window.tableTop;
+    if (!canvas || !ball || !userBat || !enemyBat || !tableTop) return;
+
+    if (this.extraUserPaddles.length === 0 && this.getTeamSize() > 1) {
+      this.initExtraPaddles();
+    }
+
+    const cx = canvas.width / 2;
+    const maxY = userBat.maxY || canvas.height * 0.55;
+    const now = performance.now();
+
+    // 1. Update Extra Bottom (User Team) Paddles
+    for (const p of this.extraUserPaddles) {
+      if (p.isNetworkTeammate) {
+        p.colorHex = this.remotePaddleColor;
+        const targetX = cx + this.coopPartnerTargX;
+        const targetY = Math.max(maxY, maxY + this.coopPartnerTargY * 250);
+        p.x += (targetX - p.x) * 0.35;
+        p.y += (targetY - p.y) * 0.35;
+      } else {
+        // AI Teammate Bot logic:
+        // In 2v2, dynamically cover the opposite side of the table from userBat
+        let desiredX = cx + p.laneOffsetX;
+        if (this.gameMode === '2v2') {
+          const userOffset = userBat.x - cx;
+          desiredX = cx + (userOffset > 20 ? -120 : userOffset < -20 ? 120 : p.laneOffsetX);
+        }
+        let desiredY = canvas.height - 135;
+
+        if (ball.lastHit === 'enemy' && ball.servingState >= 1 && !ball.offTable) {
+          // Track incoming ball if it's closer to this bot or far from human userBat
+          const distToLane = Math.abs(ball.x - desiredX);
+          const distToHuman = Math.abs(ball.x - userBat.x);
+          if (distToLane < 155 || distToHuman > 105) {
+            desiredX = Math.max(cx - 240, Math.min(cx + 240, ball.x));
+            desiredY = Math.max(maxY + 10, Math.min(canvas.height - 60, ball.y + 18));
+          }
+        }
+
+        p.x += (desiredX - p.x) * 0.14;
+        p.y += (desiredY - p.y) * 0.14;
+
+        // Check if AI Teammate Bot can return the ball (if human userBat didn't hit it)
+        const canBotHit =
+          now - this.lastExtraBotHitAt > 280 &&
+          ball.lastHit === 'enemy' &&
+          ball.servingState >= 1 &&
+          ball.bounceNum >= 1 &&
+          ball.tablePosY > 0.5 &&
+          Math.abs(userBat.x - ball.x) > 82 * userBat.scale &&
+          Math.abs(p.x - ball.x) < 92 * p.scale &&
+          Math.abs(p.y - (ball.y - ball.height * (ball.scale * 3) - 16)) < 95 * p.scale;
+
+        if (canBotHit && (!this.isCoOpSameSide() || this.net.role === 'host')) {
+          this.lastExtraBotHitAt = now;
+          if (typeof window.playSound === 'function') {
+            window.playSound('hit' + Math.floor(Math.random() * 6));
+          }
+          window.rallyHits = (window.rallyHits || 0) + 1;
+          ball.servingState = 2;
+          ball.bounceNum = 0;
+          ball.lastHit = 'user';
+          const hitData = {
+            x: Math.max(-0.85, Math.min(0.85, (Math.random() - 0.5) * 1.3)),
+            y: 0.15 + Math.random() * 0.2,
+            speed: 0.42 + Math.random() * 0.14,
+            spin: (Math.random() - 0.5) * 0.6,
+          };
+          ball.setBouncePoint(hitData);
+          this.onLocalBallHit(ball, hitData, false);
+        }
+      }
+
+      p.rotation = Math.max(-1.2, Math.min(1.2, (p.x - cx) / 200));
+      p.scale = 0.47 + (p.y - maxY) / 500;
+    }
+
+    // 2. Update Extra Top (Enemy Team) Paddles
+    const baseTopY = canvas.height / 4 + tableTop.offsetY * 50 - 45;
+    for (const p of this.extraEnemyPaddles) {
+      let desiredX = cx + p.laneOffsetX;
+      let desiredY = baseTopY;
+
+      if (ball.lastHit === 'user' && ball.servingState >= 1 && !ball.offTable) {
+        const distToLane = Math.abs(ball.x - desiredX);
+        if (distToLane < 150) {
+          desiredX = Math.max(cx - 235, Math.min(cx + 235, ball.x));
+          desiredY = baseTopY + Math.max(-15, Math.min(35, (ball.y - baseTopY) * 0.35));
+        }
+      }
+
+      p.x += (desiredX - p.x) * 0.14;
+      p.y += (desiredY - p.y) * 0.14;
+      p.rotation = (p.x - cx) / 200;
+      p.scale = 0.4 + (p.y - canvas.height / 4) / 300;
+
+      // If top side is controlled by AI Bots (Solo mode or Co-Op Same-Side mode), allow extra top bots to return shots!
+      const topSideIsBots = this.net.status !== 'connected' || this.isCoOpSameSide();
+      if (
+        topSideIsBots &&
+        (this.net.status !== 'connected' || this.net.role === 'host') &&
+        now - this.lastExtraBotHitAt > 280 &&
+        ball.lastHit === 'user' &&
+        ball.servingState >= 1 &&
+        ball.bounceNum >= 1 &&
+        ball.tablePosY < 0.5 &&
+        ball.tablePosY > 0 &&
+        Math.abs(p.x - ball.x) < 78 * p.scale &&
+        Math.abs(p.y - (ball.y - ball.height * (ball.scale * 3) - 16)) < 78 * p.scale
+      ) {
+        this.lastExtraBotHitAt = now;
+        if (typeof window.playSound === 'function') {
+          window.playSound('hit' + Math.floor(Math.random() * 6));
+        }
+        window.rallyHits = (window.rallyHits || 0) + 1;
+        ball.servingState = 2;
+        ball.bounceNum = 0;
+        ball.lastHit = 'enemy';
+        const botHitData = enemyBat.getHitData(ball.tablePosX, ball.tablePosY);
+        ball.setBouncePoint(botHitData);
+        this.onEnemyBotBallHit(ball, botHitData, false);
+      }
+    }
+  }
+
+  /**
+   * Renders extra bottom-side paddles (Co-Op Player 2 or AI Teammate Bots) in 2v2 and 4v4.
+   */
+  public renderExtraUserPaddles(ctx: CanvasRenderingContext2D, userBat: any) {
+    if (this.gameMode === '1v1' || this.extraUserPaddles.length === 0) return;
+    const canvas = window.canvas;
+    const oImg = userBat?.oGameElementsImgData;
+    const oIds = (window as any).oImageIds;
+    if (!canvas || !oImg || !oIds) return;
+
+    const centreData = oImg.oData.oAtlasData[oIds.userBatCentre];
+    const edgeData = oImg.oData.oAtlasData[oIds.userBatEdge];
+
+    for (const p of this.extraUserPaddles) {
+      ctx.save();
+      ctx.translate(p.x, p.y - 20 * p.scale);
+      const scaleY =
+        p.scale * Math.min(1 - ((p.y - canvas.height * 0.5) / (canvas.height * 0.5)) * 0.3, 1);
+      ctx.scale(p.scale, scaleY);
+      ctx.rotate(p.rotation);
+
+      ctx.drawImage(
+        oImg.img,
+        centreData.x,
+        centreData.y,
+        centreData.width,
+        centreData.height,
+        -centreData.width / 2,
+        -centreData.height / 3,
+        centreData.width,
+        centreData.height
+      );
+
+      ctx.rotate(-p.rotation);
+      ctx.translate(
+        0,
+        Math.min(7 * Math.max((p.y - canvas.height * 0.5) / (canvas.height * 0.5), 0), 7)
+      );
+      ctx.rotate(p.rotation);
+
+      this.drawTintedPaddleRubber(
+        ctx,
+        oImg.img,
+        edgeData.x,
+        edgeData.y,
+        edgeData.width,
+        edgeData.height,
+        -edgeData.width / 2,
+        -edgeData.height / 3 - 23,
+        'user',
+        p.colorHex
+      );
+      ctx.restore();
+
+      // Tiny non-obstructive role tag under the handle
+      ctx.save();
+      ctx.font = '700 7px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#000';
+      ctx.fillText(p.label, p.x + 1, p.y + 42 * p.scale + 1);
+      ctx.fillStyle = p.isNetworkTeammate ? '#00f0ff' : '#ffe600';
+      ctx.fillText(p.label, p.x, p.y + 42 * p.scale);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Renders extra top-side paddles (AI Opponent Bots / Partner Bots) in 2v2 and 4v4.
+   */
+  public renderExtraEnemyPaddles(ctx: CanvasRenderingContext2D, enemyBat: any) {
+    if (this.gameMode === '1v1' || this.extraEnemyPaddles.length === 0) return;
+    const oImg = enemyBat?.oGameElementsImgData;
+    const oIds = (window as any).oImageIds;
+    if (!oImg || !oIds) return;
+
+    const batData = oImg.oData.oAtlasData[oIds['enemyBat' + (enemyBat.id || 0)]];
+    const edgeData = oImg.oData.oAtlasData[oIds.userBatEdge];
+
+    for (const p of this.extraEnemyPaddles) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.scale(p.scale, p.scale);
+      ctx.drawImage(
+        oImg.img,
+        batData.x,
+        batData.y,
+        batData.width,
+        batData.height,
+        -batData.width / 2,
+        -batData.height / 3,
+        batData.width,
+        batData.height
+      );
+      this.drawTintedPaddleRubber(
+        ctx,
+        oImg.img,
+        edgeData.x,
+        edgeData.y,
+        edgeData.width,
+        edgeData.height,
+        -edgeData.width / 2,
+        -edgeData.height / 3 - 23,
+        'enemy',
+        p.colorHex
+      );
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Called when local `userBat` (or AI Teammate Bot) serves or returns the ball.
    */
   public onLocalBallHit(
     ball: any,
     hitData: { x: number; y: number; speed: number; spin: number },
     isServe: boolean
   ) {
-    if (this.mode !== 'NETWORK_MODE' || this.net.status !== 'connected') return;
+    if (this.net.status !== 'connected') return;
 
     const packet: BallHitPacket = {
       type: 'BALL_HIT',
       isServe,
+      coOpSameSide: this.isCoOpSameSide(),
       tablePosX: ball.tablePosX,
       tablePosY: ball.tablePosY,
       height: ball.height,
@@ -540,10 +909,40 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Handles point termination in `NETWORK_MODE` so Host and Guest never desync scores.
+   * Called when an AI Bot on the top side serves or returns the ball.
+   * In Co-Op Same-Side mode, Host broadcasts the bot's shot so Guest stays 100% synced.
+   */
+  public onEnemyBotBallHit(
+    ball: any,
+    hitData: { x: number; y: number; speed: number; spin: number },
+    isServe: boolean
+  ) {
+    if (!this.isCoOpSameSide() || this.net.role !== 'host') return;
+
+    const packet: BallHitPacket = {
+      type: 'BALL_HIT',
+      isServe,
+      fromEnemyBot: true,
+      tablePosX: ball.tablePosX,
+      tablePosY: ball.tablePosY,
+      height: ball.height,
+      hitData: {
+        x: hitData.x,
+        y: hitData.y,
+        speed: hitData.speed,
+        spin: hitData.spin,
+      },
+      rallyHits: window.rallyHits || 0,
+    };
+
+    this.net.sendReliable(packet);
+  }
+
+  /**
+   * Handles point termination in multiplayer so Host and Guest never desync scores.
    */
   public handleBallOut(ball: any, reason: 'off_table' | 'bottom_out'): boolean {
-    if (this.mode !== 'NETWORK_MODE' || this.net.status !== 'connected') {
+    if (this.net.status !== 'connected') {
       return false; // Let default single-player logic handle it
     }
 
@@ -616,8 +1015,13 @@ export class MultiplayerBridge {
 
   private handlePacket(packet: GamePacket) {
     if (packet.type === 'LOBBY_UPDATE') {
+      if (packet.gameMode && (this.net.role === 'guest' || packet.senderRole === 'host')) {
+        this.gameMode = packet.gameMode;
+      }
+      if (packet.guestSide) {
+        this.guestSide = packet.guestSide;
+      }
       if (packet.mapId && ARENA_MAPS.some((m) => m.id === packet.mapId)) {
-        // Host's map choice is synced to Guest
         if (this.net.role === 'guest' || packet.senderRole === 'host') {
           this.selectedMapId = packet.mapId;
           this.applyMapToActiveGame();
@@ -631,6 +1035,12 @@ export class MultiplayerBridge {
     }
 
     if (packet.type === 'MATCH_START' || packet.type === 'MATCH_REMATCH') {
+      if (packet.gameMode) {
+        this.gameMode = packet.gameMode;
+      }
+      if (packet.guestSide) {
+        this.guestSide = packet.guestSide;
+      }
       if (packet.mapId && ARENA_MAPS.some((m) => m.id === packet.mapId)) {
         this.selectedMapId = packet.mapId;
         this.applyMapToActiveGame();
@@ -663,6 +1073,12 @@ export class MultiplayerBridge {
     }
 
     if (packet.type === 'PADDLE_MOVE') {
+      if (this.isCoOpSameSide()) {
+        // Same-side Co-Op teammate! Do NOT mirror X
+        this.coopPartnerTargX = packet.normX * 250;
+        this.coopPartnerTargY = packet.normY;
+        return;
+      }
       const enemyBat = window.enemyBat;
       if (!enemyBat) return;
       enemyBat.controlMode = 'NETWORK_MODE';
@@ -682,7 +1098,37 @@ export class MultiplayerBridge {
         window.playSound('hit' + Math.floor(Math.random() * 6));
       }
 
-      // Reset state for new incoming trajectory
+      if (packet.fromEnemyBot) {
+        // In Co-Op Same-Side mode, Host sent the AI Bot's shot from the top side
+        ball.offTable = false;
+        ball.offSide = false;
+        ball.ballShortState = 0;
+        ball.bounceNum = 0;
+        ball.lastHit = 'enemy';
+        ball.tablePosX = packet.tablePosX;
+        ball.tablePosY = packet.tablePosY;
+        ball.height = Math.max(14, packet.height || 18);
+        ball.servingState = 2;
+        ball.setBouncePoint(packet.hitData);
+        return;
+      }
+
+      if (packet.coOpSameSide) {
+        // In Co-Op Same-Side mode, our human partner on the bottom side hit the ball toward the AI Bots!
+        ball.offTable = false;
+        ball.offSide = false;
+        ball.ballShortState = 0;
+        ball.bounceNum = 0;
+        ball.lastHit = 'user';
+        ball.tablePosX = packet.tablePosX;
+        ball.tablePosY = packet.tablePosY;
+        ball.height = Math.max(14, packet.height || 18);
+        ball.servingState = 2;
+        ball.setBouncePoint(packet.hitData);
+        return;
+      }
+
+      // Reset state for new incoming trajectory from opposite-side opponent
       ball.offTable = false;
       ball.offSide = false;
       ball.ballShortState = 0;
@@ -712,16 +1158,31 @@ export class MultiplayerBridge {
       if (now - this.lastPointProcessedAt < 500) return;
       this.lastPointProcessedAt = now;
 
-      // Evaluate from Guest's perspective: on Guest's screen, 'user' is Guest and 'enemy' is Host
       let winnerRole: 'host' | 'guest';
-      if (packet.reason === 'bottom_out') {
-        // Ball passed Guest's bottom edge: if it bounced on Guest's side (bounceNum > 0), Host wins point!
-        winnerRole = packet.bounceNum > 0 || packet.ballShortState > 0 ? 'host' : 'guest';
-      } else {
-        if (packet.lastHit === 'user') {
-          winnerRole = packet.bounceNum === 0 ? 'host' : 'guest';
+      if (this.isCoOpSameSide()) {
+        // Same perspective on Guest & Host in Co-Op mode ('host' = Co-Op Team, 'guest' = Enemy Bots)
+        if (packet.reason === 'bottom_out') {
+          winnerRole = packet.bounceNum > 0 || packet.ballShortState > 0 ? 'guest' : 'host';
         } else {
-          winnerRole = packet.bounceNum === 0 ? 'guest' : 'host';
+          winnerRole =
+            packet.lastHit === 'user'
+              ? packet.bounceNum === 0
+                ? 'guest'
+                : 'host'
+              : packet.bounceNum === 0
+              ? 'host'
+              : 'guest';
+        }
+      } else {
+        // Evaluate from Guest's perspective: on Guest's screen, 'user' is Guest and 'enemy' is Host
+        if (packet.reason === 'bottom_out') {
+          winnerRole = packet.bounceNum > 0 || packet.ballShortState > 0 ? 'host' : 'guest';
+        } else {
+          if (packet.lastHit === 'user') {
+            winnerRole = packet.bounceNum === 0 ? 'host' : 'guest';
+          } else {
+            winnerRole = packet.bounceNum === 0 ? 'guest' : 'host';
+          }
         }
       }
 
@@ -735,7 +1196,24 @@ export class MultiplayerBridge {
       const ball = window.ball;
       if (!oGameData || !ball) return;
 
-      // Set exact synchronized scores
+      if (this.isCoOpSameSide()) {
+        // In Co-Op Same-Side mode, 'host' score is the shared User Team score, 'guest' score is Enemy Bot score!
+        oGameData.userScore = packet.hostScore - (packet.pointWinner === 'host' ? 1 : 0);
+        oGameData.enemyScore = packet.guestScore - (packet.pointWinner === 'guest' ? 1 : 0);
+
+        const localWinner = packet.pointWinner === 'host' ? 'user' : 'enemy';
+        window.updateScore(localWinner);
+
+        oGameData.userScore = packet.hostScore;
+        oGameData.enemyScore = packet.guestScore;
+
+        ball.serveFlip = packet.serveFlip;
+        const localNextServer = packet.nextServer === 'host' ? 'user' : 'enemy';
+        ball.resetServe(localNextServer);
+        return;
+      }
+
+      // Set exact synchronized scores for opposite-side match
       oGameData.userScore = packet.guestScore - (packet.pointWinner === 'guest' ? 1 : 0);
       oGameData.enemyScore = packet.hostScore - (packet.pointWinner === 'host' ? 1 : 0);
 
@@ -753,10 +1231,10 @@ export class MultiplayerBridge {
   }
 
   /**
-   * Returns opponent's PlayerIdentity (Remote Player in 1v1 lobby, or AI Bot in solo mode).
+   * Returns opponent's PlayerIdentity (Remote Player in Versus lobby, or AI Bot in Solo / Co-Op Same-Side mode).
    */
   public getOpponentIdentity(): PlayerIdentity {
-    if (this.net.remotePlayer) {
+    if (this.net.remotePlayer && !this.isCoOpSameSide()) {
       return this.net.remotePlayer;
     }
     return BOT_PROFILE;
@@ -813,7 +1291,7 @@ export class MultiplayerBridge {
     ctx.font = '700 11px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const badgeW = 230;
+    const badgeW = 240;
     const badgeH = 26;
     const badgeY = cy - 60;
 
@@ -828,7 +1306,7 @@ export class MultiplayerBridge {
     ctx.strokeRect(cx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH);
     // Badge text
     ctx.fillStyle = '#000000';
-    ctx.fillText('★ 1V1 RETRO ARCADE ★', cx, badgeY + 1);
+    ctx.fillText('★ P2P RETRO ARCADE ★', cx, badgeY + 1);
 
     // 4. Giant 3D Chunky Marquee: "PONGPONG"
     const titleText = 'PONGPONG';
@@ -849,7 +1327,7 @@ export class MultiplayerBridge {
     ctx.strokeText(titleText, cx, cy);
 
     // 5. Goofy Subtitle Banner
-    const subText = 'THE GOOFIEST 1V1 PADDLE BRAWL';
+    const subText = '1V1 • 2V2 • 4V4 PADDLE BRAWL';
     ctx.font = '700 10px "Press Start 2P", monospace';
     ctx.fillStyle = '#000000';
     ctx.fillText(subText, cx + 2, cy + 38);
@@ -895,29 +1373,41 @@ export class MultiplayerBridge {
 
     const localUser = this.auth.getUser();
     const opponent = this.getOpponentIdentity();
-    const isMultiplayer = Boolean(this.net.remotePlayer);
+    const isCoOp = this.isCoOpSameSide();
+    const isVersusPeer = Boolean(this.net.remotePlayer) && !isCoOp;
     const posY = panel.posY || 0;
     const centerY = 30 - posY;
 
-    // Left slot (1P)
+    const leftBadge =
+      this.gameMode === '1v1' ? '1P' : isCoOp ? 'COOP' : this.gameMode.toUpperCase();
+    const rightBadge =
+      this.gameMode === '1v1'
+        ? isVersusPeer
+          ? '2P'
+          : 'BOT'
+        : isVersusPeer
+        ? '2P+'
+        : `${this.getTeamSize()}BOT`;
+
+    // Left slot (User Team)
     this.drawTopPfpSlot(
       ctx,
       canvas.width / 2 - 58,
       centerY,
       localUser,
       '#00f0ff',
-      '1P',
+      leftBadge,
       'left'
     );
 
-    // Right slot (2P / BOT)
+    // Right slot (Opponent Team)
     this.drawTopPfpSlot(
       ctx,
       canvas.width / 2 + 58,
       centerY,
       opponent,
-      isMultiplayer ? '#ff007f' : '#ff9900',
-      isMultiplayer ? '2P' : 'BOT',
+      isVersusPeer ? '#ff007f' : '#ff9900',
+      rightBadge,
       'right'
     );
   }
@@ -936,7 +1426,8 @@ export class MultiplayerBridge {
 
     const localUser = this.auth.getUser();
     const opponent = this.getOpponentIdentity();
-    const isMultiplayer = Boolean(this.net.remotePlayer);
+    const isCoOp = this.isCoOpSameSide();
+    const isMultiplayer = Boolean(this.net.remotePlayer) && !isCoOp;
     const posY = panel.posY || 0;
     const cx = canvas.width / 2;
 
@@ -965,7 +1456,7 @@ export class MultiplayerBridge {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      const bannerText = '★ 1V1 ARCADE BRAWL ★';
+      const bannerText = `★ ${this.gameMode.toUpperCase()} ARCADE BRAWL ★`;
       ctx.font = '900 22px "Press Start 2P", monospace';
       ctx.fillStyle = '#000000';
       ctx.fillText(bannerText, cx + 3, headerY + 3);
@@ -1251,7 +1742,7 @@ export class MultiplayerBridge {
     centerY: number,
     player: PlayerIdentity,
     chipColor: string,
-    roleTag: '1P' | '2P' | 'BOT',
+    roleTag: string,
     side: 'left' | 'right'
   ) {
     ctx.save();

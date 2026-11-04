@@ -654,7 +654,7 @@
 
 .ttwt-mode-cards-grid {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   width: 100%;
 }
@@ -674,32 +674,26 @@
   font-family: inherit;
 }
 
-.ttwt-mode-card-1v1 {
+.ttwt-mode-card-active {
   background: linear-gradient(180deg, #2b1d52 0%, #170d30 100%);
-  border-color: var(--pp-yellow);
+  border-color: #4f3a87;
   box-shadow: 4px 4px 0px #000;
 }
 
-.ttwt-mode-card-1v1:hover {
+.ttwt-mode-card-active.selected {
+  border-color: var(--pp-yellow);
+  box-shadow: 0 0 12px rgba(255, 230, 0, 0.25), 4px 4px 0px #000;
+}
+
+.ttwt-mode-card-active:hover {
   transform: translate(-2px, -2px);
   box-shadow: 6px 6px 0px #000;
-  border-color: #fff;
+  border-color: var(--pp-cyan);
 }
 
-.ttwt-mode-card-1v1:active {
+.ttwt-mode-card-active:active {
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0px #000;
-}
-
-.ttwt-mode-card-locked {
-  background: rgba(23, 16, 43, 0.7);
-  border-color: #3b305c;
-  opacity: 0.75;
-}
-
-.ttwt-mode-card-locked:hover {
-  opacity: 0.95;
-  border-color: var(--pp-pink);
 }
 
 .ttwt-card-tag {
@@ -716,7 +710,12 @@
   font-weight: 900;
 }
 
-.ttwt-card-tag.soon {
+.ttwt-card-tag.cyan {
+  background: var(--pp-cyan);
+  color: #000;
+}
+
+.ttwt-card-tag.pink {
   background: var(--pp-pink);
   color: #fff;
 }
@@ -734,7 +733,7 @@
   margin-bottom: 4px;
 }
 
-.ttwt-mode-card-1v1 .ttwt-card-title {
+.ttwt-mode-card-active.selected .ttwt-card-title {
   color: var(--pp-yellow);
 }
 
@@ -911,11 +910,78 @@
   font-size: 8px;
 }
 
+/* 🎮 Mode Switcher & 2v2/4v4 Side Selector Bar */
+.ttwt-pregame-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #130a29;
+  border: 2.5px solid #35235e;
+  border-radius: 12px;
+  padding: 7px 12px;
+  box-shadow: 2px 2px 0px #000;
+}
+
+.ttwt-mode-pills-group,
+.ttwt-side-pills-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ttwt-bar-mini-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--pp-text-muted);
+  margin-right: 2px;
+}
+
+.ttwt-mode-switch-pill,
+.ttwt-side-switch-pill {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 2px solid #000;
+  background: #241645;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px #000;
+  transition: transform 0.08s ease, background 0.1s ease;
+}
+
+.ttwt-mode-switch-pill:hover:not(.readonly),
+.ttwt-side-switch-pill:hover {
+  transform: translate(-1px, -1px);
+  background: #362266;
+}
+
+.ttwt-mode-switch-pill.active {
+  background: var(--pp-yellow);
+  color: #000;
+  font-weight: 900;
+}
+
+.ttwt-side-switch-pill.active.vs {
+  background: var(--pp-pink);
+  color: #fff;
+  font-weight: 900;
+}
+
+.ttwt-side-switch-pill.active.coop {
+  background: var(--pp-cyan);
+  color: #000;
+  font-weight: 900;
+}
+
 /* Players VS Stage */
 .ttwt-pregame-players-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -927,7 +993,104 @@
   box-shadow: 4px 4px 0px #000;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.ttwt-team-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 6px;
+}
+
+.ttwt-team-sub-status {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--pp-text-muted);
+}
+
+.ttwt-roster-slots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ttwt-roster-slots-list.compact-4v4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.ttwt-roster-slot-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #110824;
+  border: 2px solid #2e1d52;
+  border-radius: 10px;
+  padding: 5px 8px;
+}
+
+.ttwt-roster-slot-chip.human {
+  border-color: var(--pp-cyan);
+  background: #170e33;
+}
+
+.ttwt-roster-slot-chip.bot {
+  border-color: #3a2763;
+  opacity: 0.92;
+}
+
+.ttwt-roster-slot-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid #000;
+  background: #0d061c;
+  flex-shrink: 0;
+}
+
+.ttwt-roster-slots-list.compact-4v4 .ttwt-roster-slot-avatar {
+  width: 24px;
+  height: 24px;
+}
+
+.ttwt-roster-slot-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.ttwt-roster-slot-tag {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--pp-yellow);
+  margin-bottom: 2px;
+}
+
+.ttwt-roster-slot-chip.bot .ttwt-roster-slot-tag {
+  color: #ff9900;
+}
+
+.ttwt-roster-slot-name {
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ttwt-roster-slots-list.compact-4v4 .ttwt-roster-slot-name {
+  font-size: 10px;
+}
+
+.ttwt-roster-slot-paddle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .ttwt-pregame-player-card.local {
