@@ -37,10 +37,11 @@ async function bootstrapMultiplayerApp() {
   const params = new URLSearchParams(window.location.search);
   const pendingRoom = sessionStorage.getItem('ttwt_pending_room');
   const roomParam = params.get('room') || pendingRoom;
+  sessionStorage.removeItem('ttwt_pending_room');
 
   if (roomParam && roomParam.trim().length >= 4) {
     await oauthPromise;
-    await ui.joinRoomFromHome(roomParam.trim().toUpperCase());
+    await ui.promptJoinLobby(roomParam.trim().toUpperCase());
   }
 }
 

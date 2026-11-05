@@ -15,6 +15,8 @@ interface QueuedEnvelope {
 
 interface RoomState {
   roomCode: string;
+  gameMode?: string;
+  matchInProgress?: boolean;
   hostPlayer?: unknown;
   guestPlayer?: unknown;
   hostLastSeen: number;
@@ -33,6 +35,7 @@ interface RoomState {
 
 const ROOM_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const HOST_STALE_MS = 45 * 1000; // 45 seconds without poll = host offline
+const GUEST_STALE_MS = 45 * 1000; // 45 seconds without poll = guest offline
 
 declare global {
   // eslint-disable-next-line no-var
@@ -133,6 +136,8 @@ function createEmptyRoom(roomCode: string): RoomState {
   const now = Date.now();
   return {
     roomCode,
+    gameMode: '1v1',
+    matchInProgress: false,
     hostLastSeen: 0,
     guestLastSeen: 0,
     peerJoinedNotified: false,
@@ -223,22 +228,94 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       return;
     }
 
+    if (type === 'CHECK_ROOM') {
+      const room = await loadRoom(roomCode);
+      const hostAlive = Boolean(room && room.hostPlayer && now - room.hostLastSeen < HOST_STALE_MS);
+
+      if (!room || !hostAlive) {
+        sendJson(res, 200, {
+          ok: true,
+          exists: false,
+          error: 'ROOM_NOT_FOUND',
+          message: `Room ${roomCode} does not exist or host is offline.`,
+        });
+        return;
+      }
+
+      const guestAlive = Boolean(room.guestPlayer && now - room.guestLastSeen < GUEST_STALE_MS);
+      const isFull = guestAlive;
+      const playerCount = 1 + (guestAlive ? 1 : 0);
+
+      sendJson(res, 200, {
+        ok: true,
+        exists: true,
+        roomCode,
+        isFull,
+        playerCount,
+        maxPlayers: 2,
+        gameMode: room.gameMode || '1v1',
+        hostPlayer: room.hostPlayer,
+        matchInProgress: Boolean(room.matchInProgress),
+      });
+      return;
+    }
+
     if (type === 'CREATE_ROOM') {
       const room = createEmptyRoom(roomCode);
       room.hostPlayer = body.playerInfo;
       room.hostLastSeen = now;
+      room.gameMode = body.gameMode || '1v1';
+      room.matchInProgress = false;
       await saveRoom(room);
       sendJson(res, 200, { ok: true, roomCode, cursor: 0, messages: [] });
       return;
     }
 
-    if (type === 'JOIN_ROOM') {
-      let room = await loadRoom(roomCode);
-      const hostAlive = room && room.hostPlayer && now - room.hostLastSeen < HOST_STALE_MS;
+    if (type === 'UPDATE_ROOM') {
+      const room = await loadRoom(roomCode);
+      if (room) {
+        if (body.gameMode) room.gameMode = body.gameMode;
+        if (typeof body.matchInProgress === 'boolean') room.matchInProgress = body.matchInProgress;
+        await saveRoom(room);
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
 
-      if (!room) {
-        // Provisional room in case warm lambda switched; Host's poll will self-heal it immediately
-        room = createEmptyRoom(roomCode);
+    if (type === 'JOIN_ROOM') {
+      const room = await loadRoom(roomCode);
+      const hostAlive = Boolean(room && room.hostPlayer && now - room.hostLastSeen < HOST_STALE_MS);
+
+      if (!room || !hostAlive) {
+        sendJson(res, 200, {
+          ok: false,
+          error: 'ROOM_NOT_FOUND',
+          message: `Room ${roomCode} does not exist or host is offline.`,
+        });
+        return;
+      }
+
+      // Check capacity: prevent 3rd player from overwriting an active guest!
+      const guestAlive = Boolean(room.guestPlayer && now - room.guestLastSeen < GUEST_STALE_MS);
+      const joiningPlayerId = (body.playerInfo as any)?.id;
+      const existingGuestId = (room.guestPlayer as any)?.id;
+
+      if (guestAlive && joiningPlayerId && existingGuestId && joiningPlayerId !== existingGuestId) {
+        sendJson(res, 200, {
+          ok: false,
+          error: 'ROOM_FULL',
+          message: `Room ${roomCode} is full! (2/2 players already connected)`,
+        });
+        return;
+      }
+
+      if (room.matchInProgress && (!existingGuestId || joiningPlayerId !== existingGuestId)) {
+        sendJson(res, 200, {
+          ok: false,
+          error: 'MATCH_IN_PROGRESS',
+          message: `Match is currently in progress in room ${roomCode}.`,
+        });
+        return;
       }
 
       room.guestPlayer = body.playerInfo;
@@ -246,10 +323,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       room.guestJoinedAt = now;
       room.peerJoinedNotified = false;
 
-      if (hostAlive) {
-        triggerHandshakeNotifications(room);
-      }
-
+      triggerHandshakeNotifications(room);
       await saveRoom(room);
 
       const initialMessages = room.messagesForGuest.slice();
@@ -263,7 +337,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         peerPlayerInfo: room.hostPlayer,
         cachedPeerSdp: room.cachedOffer,
         cachedPeerCandidates: room.cachedHostCandidates,
-        pendingHostSync: !hostAlive,
+        gameMode: room.gameMode || '1v1',
       });
       return;
     }
@@ -396,6 +470,26 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
           mutated = true;
         }
       } else {
+        const existingGuestId = (room.guestPlayer as any)?.id;
+        const pollingPlayerId = (body.playerInfo as any)?.id;
+        if (existingGuestId && pollingPlayerId && existingGuestId !== pollingPlayerId && now - room.guestLastSeen < GUEST_STALE_MS) {
+          sendJson(res, 200, {
+            ok: false,
+            error: 'ROOM_FULL',
+            cursor,
+            messages: [
+              {
+                seq: cursor + 1,
+                msgId: makeId('err'),
+                type: 'ERROR',
+                roomCode,
+                message: `Room ${roomCode} is full (2/2 players already connected).`,
+              },
+            ],
+          });
+          return;
+        }
+
         room.guestLastSeen = now;
         if (body.playerInfo && !room.guestPlayer) {
           room.guestPlayer = body.playerInfo;

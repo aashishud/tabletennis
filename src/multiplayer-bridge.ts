@@ -259,6 +259,7 @@ export class MultiplayerBridge {
     if (mode === '1v1') {
       this.guestSide = 'opposite';
     }
+    void this.net.updateGameMode(mode);
     this.broadcastLobbyState();
     this.notifyLobbyListeners();
   }
@@ -619,11 +620,16 @@ export class MultiplayerBridge {
     for (const cb of this.gameStateListeners) {
       cb(state);
     }
-    if (state === 'start') {
-      const vhpRoot = document.getElementById('vhp-mount-root');
-      if (!vhpRoot && typeof (window as any).replayVinylPreloader === 'function') {
-        (window as any).replayVinylPreloader();
+    if (state === 'start' || state === 'gameComplete') {
+      void this.net.setMatchInProgress(false);
+      if (state === 'start') {
+        const vhpRoot = document.getElementById('vhp-mount-root');
+        if (!vhpRoot && typeof (window as any).replayVinylPreloader === 'function') {
+          (window as any).replayVinylPreloader();
+        }
       }
+    } else if (state === 'game') {
+      void this.net.setMatchInProgress(true);
     }
   }
 

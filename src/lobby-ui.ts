@@ -150,23 +150,160 @@ export class LobbyOverlayUI {
     const urlRoom = urlParams.get('room')?.toUpperCase().trim();
 
     if (urlRoom && !this.net.roomCode) {
-      await this.net.joinRoom(urlRoom);
+      const res = await this.net.joinRoom(urlRoom);
+      if (!res.ok) {
+        window.history.replaceState(null, '', window.location.pathname);
+        const code = await this.net.createRoom(undefined, mode);
+        window.history.replaceState(null, '', `?room=${code}`);
+      }
+      this.render();
     } else if (!this.net.roomCode) {
-      const code = await this.net.createRoom();
+      const code = await this.net.createRoom(undefined, mode);
       window.history.replaceState(null, '', `?room=${code}`);
       this.render();
     }
   }
 
-  public async joinRoomFromHome(rawCode: string) {
+  public async joinRoomFromHome(rawCode: string): Promise<boolean> {
     const code = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length < 4) {
       this.showToast('ENTER VALID 6-CHAR CODE!');
+      return false;
+    }
+
+    this.showToast(`🔍 CONNECTING TO ROOM ${code}...`);
+    const res = await this.net.joinRoom(code);
+
+    if (!res.ok) {
+      this.showToast(res.message || `❌ ROOM ${code} NOT FOUND OR FULL!`);
+      // Clean up URL if it has invalid/failed room
+      window.history.replaceState(null, '', window.location.pathname);
+      return false;
+    }
+
+    // Success! Update URL and transition into the pregame lobby
+    window.history.replaceState(null, '', `?room=${code}`);
+    this.openPreGameLobby();
+    this.showToast(`✓ JOINED ROOM ${code}!`);
+    return true;
+  }
+
+  /**
+   * Called when opening the app with an invite link (?room=XXXXXX).
+   * Verifies room existence, host presence, and capacity before showing the "JOIN THIS LOBBY" invite card.
+   */
+  public async promptJoinLobby(rawCode: string): Promise<void> {
+    const code = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 4) {
+      window.history.replaceState(null, '', window.location.pathname);
       return;
     }
-    this.openPreGameLobby();
-    window.history.replaceState(null, '', `?room=${code}`);
-    await this.net.joinRoom(code);
+
+    this.showToast(`🔍 VERIFYING ROOM ${code}...`);
+    const check = await this.net.checkRoom(code);
+
+    if (!check.exists) {
+      this.showToast(check.message || `❌ ROOM ${code} NOT FOUND OR HOST OFFLINE!`);
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+
+    if (check.isFull) {
+      this.showToast(`⚠️ ROOM ${code} IS FULL! (2/2 PLAYERS ALREADY IN LOBBY)`);
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+
+    if (check.matchInProgress) {
+      this.showToast(`⚔️ MATCH IN PROGRESS IN ROOM ${code}!`);
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+
+    // If local user is the host returning to their own room:
+    const currentUser = this.auth.getUser();
+    if (currentUser && (check.hostPlayer as any)?.id === currentUser.id) {
+      await this.net.createRoom(code, check.gameMode);
+      if (check.gameMode) this.bridge.setGameMode(check.gameMode);
+      this.openPreGameLobby();
+      return;
+    }
+
+    // Show the interactive "JOIN THIS LOBBY" invitation card modal!
+    this.showInvitePromptModal(code, check);
+  }
+
+  private showInvitePromptModal(code: string, roomInfo: any) {
+    const existing = document.getElementById('ttwt-invite-modal-overlay');
+    if (existing) existing.remove();
+
+    const hostName = this.escapeHtml(roomInfo.hostPlayer?.displayName || 'Host Player');
+    const hostAvatar = roomInfo.hostPlayer?.avatarUrl || 'images/avatar_placeholder.png';
+    const modeName = ((roomInfo.gameMode || '1v1') as string).toUpperCase() + ' BRAWL';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'ttwt-invite-modal-overlay';
+    overlay.className = 'ttwt-invite-modal-overlay';
+    overlay.innerHTML = `
+      <div class="ttwt-invite-card">
+        <div class="ttwt-invite-badge">★ MATCH INVITATION ★</div>
+        <h2 class="ttwt-invite-title">LOBBY FOUND</h2>
+        <div class="ttwt-invite-code-pill">ROOM: ${code}</div>
+
+        <div class="ttwt-invite-host-card">
+          <div class="ttwt-invite-avatar-box">
+            <img class="ttwt-invite-host-avatar" src="${hostAvatar}" alt="${hostName}" onerror="this.src='images/avatar_placeholder.png'" />
+            <span class="ttwt-invite-crown">👑</span>
+          </div>
+          <div class="ttwt-invite-host-meta">
+            <span class="ttwt-invite-host-label">HOST / 1P</span>
+            <span class="ttwt-invite-host-name">${hostName}</span>
+          </div>
+          <div class="ttwt-invite-mode-tag">${modeName}</div>
+        </div>
+
+        <div class="ttwt-invite-capacity-row">
+          <span class="ttwt-invite-dot"></span>
+          <span class="ttwt-invite-capacity-text">SLOTS: 1 / 2 PLAYERS (OPEN FOR P2P DUEL)</span>
+        </div>
+
+        <div class="ttwt-invite-btn-row">
+          <button class="ttwt-btn ttwt-btn-cyan ttwt-invite-confirm-btn" id="ttwt-invite-confirm-btn">
+            ► JOIN THIS LOBBY ◄
+          </button>
+          <button class="ttwt-btn ttwt-btn-dark ttwt-invite-decline-btn" id="ttwt-invite-decline-btn">
+            ✕ DECLINE / HOME
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const cleanup = () => {
+      overlay.remove();
+    };
+
+    document.getElementById('ttwt-invite-confirm-btn')?.addEventListener('click', async () => {
+      if (typeof (window as any).playSound === 'function') {
+        try {
+          (window as any).playSound('hit0');
+        } catch {}
+      }
+      cleanup();
+      await this.joinRoomFromHome(code);
+    });
+
+    document.getElementById('ttwt-invite-decline-btn')?.addEventListener('click', () => {
+      if (typeof (window as any).playSound === 'function') {
+        try {
+          (window as any).playSound('hit1');
+        } catch {}
+      }
+      cleanup();
+      window.history.replaceState(null, '', window.location.pathname);
+      this.showToast('INVITATION DECLINED');
+    });
   }
 
   public openModal() {
@@ -988,9 +1125,7 @@ export class LobbyOverlayUI {
       if (typeof window.playSound === 'function') {
         window.playSound('hit0');
       }
-      this.openPreGameLobby();
-      window.history.replaceState(null, '', `?room=${code}`);
-      await this.net.joinRoom(code);
+      await this.joinRoomFromHome(code);
     };
 
     document.getElementById('ttwt-dock-join-btn')?.addEventListener('click', handleDockJoin);

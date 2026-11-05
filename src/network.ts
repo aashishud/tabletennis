@@ -191,7 +191,7 @@ export class WebRTCRoomManager {
   /**
    * Host creates a 6-character room and waits for Player 2 to join.
    */
-  public async createRoom(customCode?: string): Promise<string> {
+  public async createRoom(customCode?: string, gameMode?: GameMode): Promise<string> {
     this.disconnect();
     const token = ++this.sessionToken;
     this.role = 'host';
@@ -204,6 +204,7 @@ export class WebRTCRoomManager {
       type: 'CREATE_ROOM',
       roomCode: this.roomCode,
       playerInfo: this.localPlayer,
+      gameMode: gameMode || '1v1',
       senderRole: 'host',
     });
 
@@ -215,16 +216,95 @@ export class WebRTCRoomManager {
   }
 
   /**
-   * Player 2 joins an existing 6-character room code.
+   * Queries signaling server to check if a room code exists, whether host is alive,
+   * current game mode, and whether room is full (2/2 capacity limit).
    */
-  public async joinRoom(code: string): Promise<void> {
+  public async checkRoom(code: string): Promise<{
+    ok: boolean;
+    exists: boolean;
+    isFull?: boolean;
+    playerCount?: number;
+    maxPlayers?: number;
+    gameMode?: GameMode;
+    hostPlayer?: PlayerIdentity;
+    matchInProgress?: boolean;
+    error?: string;
+    message?: string;
+  }> {
+    const cleanCode = code.toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
+    if (cleanCode.length < 4) {
+      return { ok: false, exists: false, error: 'INVALID_CODE', message: 'Room code must be at least 4 characters.' };
+    }
+
+    const resp = await this.postHttpSignal({
+      type: 'CHECK_ROOM',
+      roomCode: cleanCode,
+      playerInfo: this.localPlayer,
+    });
+
+    if (!resp) {
+      return { ok: false, exists: false, error: 'NETWORK_ERROR', message: 'Could not connect to signaling server.' };
+    }
+
+    return resp;
+  }
+
+  /**
+   * Updates host room state (e.g. match in progress flag) on the signaling server.
+   */
+  public async setMatchInProgress(inProgress: boolean): Promise<void> {
+    if (!this.roomCode || this.role !== 'host') return;
+    await this.postHttpSignal({
+      type: 'UPDATE_ROOM',
+      roomCode: this.roomCode,
+      matchInProgress: inProgress,
+    });
+  }
+
+  /**
+   * Updates host room game mode on the signaling server.
+   */
+  public async updateGameMode(gameMode: GameMode): Promise<void> {
+    if (!this.roomCode || this.role !== 'host') return;
+    await this.postHttpSignal({
+      type: 'UPDATE_ROOM',
+      roomCode: this.roomCode,
+      gameMode,
+    });
+  }
+
+  /**
+   * Player 2 joins an existing 6-character room code.
+   * Validates room presence and 2/2 capacity before establishing WebRTC peer connection.
+   */
+  public async joinRoom(code: string): Promise<{ ok: boolean; error?: string; message?: string }> {
     this.disconnect();
     const token = ++this.sessionToken;
     this.role = 'guest';
-    this.roomCode = code.toUpperCase().trim();
+    this.roomCode = code.toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
     this.setStatus('handshaking', `Connecting to room ${this.roomCode}...`);
 
     this.initBroadcastChannel();
+
+    // Notify Vercel Serverless signaling endpoint for cross-internet multiplayer & validate capacity
+    const joinResp = await this.postHttpSignal({
+      type: 'JOIN_ROOM',
+      roomCode: this.roomCode,
+      playerInfo: this.localPlayer,
+      senderRole: 'guest',
+    });
+
+    if (this.sessionToken !== token) {
+      return { ok: false, error: 'CANCELLED', message: 'Join session cancelled.' };
+    }
+
+    if (!joinResp || joinResp.ok === false) {
+      const err = joinResp?.error || 'ROOM_NOT_FOUND';
+      const msg = joinResp?.message || `Room ${this.roomCode} not found or host is offline.`;
+      this.setStatus('error', msg);
+      this.disconnect();
+      return { ok: false, error: err, message: msg };
+    }
 
     // Notify local BroadcastChannel immediately for 0ms multi-tab testing
     this.sendBroadcastOnly({
@@ -233,17 +313,7 @@ export class WebRTCRoomManager {
       playerInfo: this.localPlayer,
     });
 
-    // Notify Vercel Serverless signaling endpoint for cross-internet multiplayer
-    const joinResp = await this.postHttpSignal({
-      type: 'JOIN_ROOM',
-      roomCode: this.roomCode,
-      playerInfo: this.localPlayer,
-      senderRole: 'guest',
-    });
-
-    if (this.sessionToken !== token) return;
-
-    if (joinResp && typeof joinResp.cursor === 'number') {
+    if (typeof joinResp.cursor === 'number') {
       this.pollCursor = joinResp.cursor;
     }
     if (joinResp?.peerPlayerInfo && !this.remotePlayer) {
@@ -267,6 +337,8 @@ export class WebRTCRoomManager {
     if (!this.isWebRTCConnected && this.status !== 'error') {
       this.startHttpPolling(token);
     }
+
+    return { ok: true };
   }
 
   private initBroadcastChannel() {
