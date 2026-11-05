@@ -299,6 +299,7 @@ export class MultiplayerBridge {
       mapId: this.canLocalSelectMap() ? this.selectedMapId : undefined,
       paddleColor: this.localPaddleColor,
       senderRole: this.net.role,
+      playerInfo: this.auth.getUser(),
     });
   }
 
@@ -1222,6 +1223,9 @@ export class MultiplayerBridge {
 
   private handlePacket(packet: GamePacket) {
     if (packet.type === 'LOBBY_UPDATE') {
+      if (packet.playerInfo) {
+        this.net.setRemotePlayer(packet.playerInfo);
+      }
       if (packet.gameMode && (this.net.role === 'guest' || packet.senderRole === 'host')) {
         this.gameMode = packet.gameMode;
       }

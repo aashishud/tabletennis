@@ -68,6 +68,7 @@ export interface LobbyUpdatePacket {
   mapId?: string;
   paddleColor?: string;
   senderRole?: 'host' | 'guest' | null;
+  playerInfo?: PlayerIdentity;
 }
 
 export interface PeerPausedPacket {
@@ -172,7 +173,7 @@ export class WebRTCRoomManager {
     }
   }
 
-  private setRemotePlayer(peer: PlayerIdentity | null) {
+  public setRemotePlayer(peer: PlayerIdentity | null) {
     this.remotePlayer = peer;
     for (const cb of this.peerListeners) {
       cb(peer);

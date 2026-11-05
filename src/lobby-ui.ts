@@ -89,10 +89,29 @@ export class LobbyOverlayUI {
     return this.inPreGameLobby;
   }
 
+  /**
+   * Keeps browser URL synchronized with current active room code.
+   * If in a room: ?room=CODE
+   * If not in a room: cleans URL to base pathname
+   */
+  public syncUrlWithRoom() {
+    if (this.net.roomCode) {
+      const target = `${window.location.pathname}?room=${this.net.roomCode}`;
+      if (window.location.search !== `?room=${this.net.roomCode}`) {
+        window.history.replaceState(null, '', target);
+      }
+    } else {
+      if (window.location.search) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }
+
   public openPreGameLobby() {
     this.inPreGameLobby = true;
     this.modalOpen = false;
     (window as any).setVinylLobbyMode?.(true);
+    this.syncUrlWithRoom();
     this.render();
   }
 
@@ -109,7 +128,7 @@ export class LobbyOverlayUI {
   public leaveLobby() {
     const hadRoom = Boolean(this.net.roomCode);
     this.net.disconnect();
-    window.history.replaceState(null, '', window.location.pathname);
+    this.syncUrlWithRoom();
     this.inPreGameLobby = false;
     this.modalOpen = false;
     (window as any).setVinylLobbyMode?.(false);
@@ -152,15 +171,18 @@ export class LobbyOverlayUI {
     if (urlRoom && !this.net.roomCode) {
       const res = await this.net.joinRoom(urlRoom);
       if (!res.ok) {
-        window.history.replaceState(null, '', window.location.pathname);
         const code = await this.net.createRoom(undefined, mode);
-        window.history.replaceState(null, '', `?room=${code}`);
+        this.syncUrlWithRoom();
+      } else {
+        this.syncUrlWithRoom();
       }
       this.render();
     } else if (!this.net.roomCode) {
       const code = await this.net.createRoom(undefined, mode);
-      window.history.replaceState(null, '', `?room=${code}`);
+      this.syncUrlWithRoom();
       this.render();
+    } else {
+      this.syncUrlWithRoom();
     }
   }
 
@@ -171,18 +193,41 @@ export class LobbyOverlayUI {
       return false;
     }
 
-    this.showToast(`🔍 CONNECTING TO ROOM ${code}...`);
+    this.showToast(`🔍 CHECKING ROOM ${code}...`);
+    const check = await this.net.checkRoom(code);
+
+    if (!check.exists) {
+      this.showToast(check.message || `❌ ROOM ${code} NOT FOUND OR HOST OFFLINE!`);
+      this.syncUrlWithRoom();
+      return false;
+    }
+
+    if (check.isFull) {
+      this.showToast(`⚠️ ROOM ${code} IS FULL! (2/2 PLAYERS ALREADY IN LOBBY)`);
+      this.syncUrlWithRoom();
+      return false;
+    }
+
+    if (check.matchInProgress) {
+      this.showToast(`⚔️ MATCH IN PROGRESS IN ROOM ${code}!`);
+      this.syncUrlWithRoom();
+      return false;
+    }
+
     const res = await this.net.joinRoom(code);
 
     if (!res.ok) {
       this.showToast(res.message || `❌ ROOM ${code} NOT FOUND OR FULL!`);
-      // Clean up URL if it has invalid/failed room
-      window.history.replaceState(null, '', window.location.pathname);
+      this.syncUrlWithRoom();
       return false;
     }
 
+    if (check.gameMode) {
+      this.bridge.setGameMode(check.gameMode);
+    }
+
     // Success! Update URL and transition into the pregame lobby
-    window.history.replaceState(null, '', `?room=${code}`);
+    this.syncUrlWithRoom();
     this.openPreGameLobby();
     this.showToast(`✓ JOINED ROOM ${code}!`);
     return true;
@@ -195,7 +240,7 @@ export class LobbyOverlayUI {
   public async promptJoinLobby(rawCode: string): Promise<void> {
     const code = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length < 4) {
-      window.history.replaceState(null, '', window.location.pathname);
+      this.syncUrlWithRoom();
       return;
     }
 
@@ -204,19 +249,19 @@ export class LobbyOverlayUI {
 
     if (!check.exists) {
       this.showToast(check.message || `❌ ROOM ${code} NOT FOUND OR HOST OFFLINE!`);
-      window.history.replaceState(null, '', window.location.pathname);
+      this.syncUrlWithRoom();
       return;
     }
 
     if (check.isFull) {
       this.showToast(`⚠️ ROOM ${code} IS FULL! (2/2 PLAYERS ALREADY IN LOBBY)`);
-      window.history.replaceState(null, '', window.location.pathname);
+      this.syncUrlWithRoom();
       return;
     }
 
     if (check.matchInProgress) {
       this.showToast(`⚔️ MATCH IN PROGRESS IN ROOM ${code}!`);
-      window.history.replaceState(null, '', window.location.pathname);
+      this.syncUrlWithRoom();
       return;
     }
 
@@ -225,6 +270,7 @@ export class LobbyOverlayUI {
     if (currentUser && (check.hostPlayer as any)?.id === currentUser.id) {
       await this.net.createRoom(code, check.gameMode);
       if (check.gameMode) this.bridge.setGameMode(check.gameMode);
+      this.syncUrlWithRoom();
       this.openPreGameLobby();
       return;
     }
@@ -424,7 +470,14 @@ export class LobbyOverlayUI {
           <div class="ttwt-roster-slot-chip ${s.isBot ? 'bot' : 'human'}">
             <img class="ttwt-roster-slot-avatar" src="${s.avatar}" alt="${this.escapeHtml(s.name)}" />
             <div class="ttwt-roster-slot-info">
-              <span class="ttwt-roster-slot-tag">${s.label}</span>
+              <div class="ttwt-roster-slot-tag-row">
+                <span class="ttwt-roster-slot-tag">${s.label}</span>
+                ${
+                  !s.isBot && s.label.includes('(YOU)')
+                    ? `<button class="ttwt-roster-rename-btn" id="ttwt-roster-rename-btn" title="Change your arcade callsign or roll a random name">✎ EDIT</button>`
+                    : ''
+                }
+              </div>
               <span class="ttwt-roster-slot-name">${this.escapeHtml(s.name)}</span>
             </div>
             <div class="ttwt-roster-slot-paddle" title="Paddle Color">
@@ -1012,7 +1065,9 @@ export class LobbyOverlayUI {
           <div class="ttwt-section">
             <div class="ttwt-section-label">
               <span>PLAYER IDENTITY</span>
-              <span style="color: var(--pp-text-muted);">APP: ${this.auth.getDiscordClientId().slice(0, 6)}...</span>
+              <span style="color: var(--pp-text-muted);">${
+                user.authProvider === 'discord' ? 'VERIFIED DISCORD' : 'ARCADE CALLSIGN'
+              }</span>
             </div>
 
             <div class="ttwt-profile-row">
@@ -1024,15 +1079,42 @@ export class LobbyOverlayUI {
                   </div>
                   <div style="font-size: 13px; font-weight: 700; color: var(--pp-cyan);">
                     @${this.escapeHtml(user.username)} • ${
-      user.authProvider === 'discord' ? 'DISCORD OAUTH' : 'DEV MOCK'
+      user.authProvider === 'discord' ? 'DISCORD OAUTH' : 'ARCADE GUEST'
     }
                   </div>
                 </div>
               </div>
 
               <button class="ttwt-btn ttwt-btn-discord" id="ttwt-discord-oauth-btn">
-                LOGIN DISCORD
+                ${user.authProvider === 'discord' ? '✓ DISCORD CONNECTED' : 'LOGIN DISCORD'}
               </button>
+            </div>
+
+            <!-- ✎ Among Us Style Arcade Callsign Editor -->
+            <div class="ttwt-name-edit-box">
+              <div class="ttwt-name-edit-label-row">
+                <span class="ttwt-name-edit-title">CHANGE ARCADE CALLSIGN</span>
+                <span class="ttwt-name-edit-hint">MAX 16 CHARS</span>
+              </div>
+              <div class="ttwt-name-edit-input-row">
+                <input
+                  type="text"
+                  class="ttwt-profile-name-input"
+                  id="ttwt-profile-name-input"
+                  maxlength="16"
+                  value="${this.escapeHtml(user.displayName)}"
+                  placeholder="NEW CALLSIGN"
+                />
+                <button class="ttwt-btn ttwt-btn-cyan ttwt-name-save-btn" id="ttwt-profile-name-save-btn" title="Save new arcade name">
+                  SAVE
+                </button>
+                <button class="ttwt-btn ttwt-name-dice-btn" id="ttwt-profile-name-dice-btn" title="Roll a random arcade callsign & colors!">
+                  🎲 ROLL
+                </button>
+              </div>
+              <div class="ttwt-name-live-note">
+                ⚡ Opponents in lobby and matches see your updated name & avatar live!
+              </div>
             </div>
           </div>
         </div>
@@ -1078,10 +1160,13 @@ export class LobbyOverlayUI {
 
         if (urlRoom && !this.net.roomCode) {
           await this.net.joinRoom(urlRoom);
+          this.syncUrlWithRoom();
         } else if (!this.net.roomCode) {
-          const code = await this.net.createRoom();
-          window.history.replaceState(null, '', `?room=${code}`);
+          const code = await this.net.createRoom(undefined, mode);
+          this.syncUrlWithRoom();
           this.render();
+        } else {
+          this.syncUrlWithRoom();
         }
       });
     });
@@ -1133,7 +1218,7 @@ export class LobbyOverlayUI {
       if (e.key === 'Enter') void handleDockJoin();
     });
 
-    // Inline Join with Code inside Pre-Game Lobby
+    // Inline Join with Code inside Pre-Game Lobby (Pre-validates to preserve existing room on typos)
     const inlineJoinInput = document.getElementById('ttwt-pregame-join-input') as HTMLInputElement | null;
     const handleInlineJoin = async () => {
       const code = inlineJoinInput?.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || '';
@@ -1141,14 +1226,91 @@ export class LobbyOverlayUI {
         this.showToast('ENTER VALID 6-CHAR CODE!');
         return;
       }
+      if (code === this.net.roomCode) {
+        this.showToast('ALREADY IN THIS ROOM!');
+        return;
+      }
       if (typeof window.playSound === 'function') {
         window.playSound('hit0');
       }
-      await this.joinRoomFromHome(code);
+
+      this.showToast(`🔍 CHECKING ROOM ${code}...`);
+      const check = await this.net.checkRoom(code);
+      if (!check.exists) {
+        this.showToast(check.message || `❌ ROOM ${code} NOT FOUND OR HOST OFFLINE!`);
+        return; // Preserves current room!
+      }
+      if (check.isFull) {
+        this.showToast(`⚠️ ROOM ${code} IS FULL! (2/2 PLAYERS ALREADY IN LOBBY)`);
+        return; // Preserves current room!
+      }
+      if (check.matchInProgress) {
+        this.showToast(`⚔️ MATCH IN PROGRESS IN ROOM ${code}!`);
+        return; // Preserves current room!
+      }
+
+      const res = await this.net.joinRoom(code);
+      if (!res.ok) {
+        this.showToast(res.message || `❌ FAILED TO JOIN ROOM ${code}`);
+        return;
+      }
+
+      if (check.gameMode) {
+        this.bridge.setGameMode(check.gameMode);
+      }
+      this.syncUrlWithRoom();
+      this.render();
+      this.showToast(`✓ SWITCHED TO ROOM ${code}!`);
     };
     document.getElementById('ttwt-pregame-join-btn')?.addEventListener('click', handleInlineJoin);
     inlineJoinInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') void handleInlineJoin();
+    });
+
+    // ✎ Profile Callsign Save & Randomize Roll
+    const saveProfileName = () => {
+      const input = document.getElementById('ttwt-profile-name-input') as HTMLInputElement | null;
+      const val = input?.value.trim();
+      if (!val) {
+        this.showToast('ENTER A VALID CALLSIGN!');
+        return;
+      }
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit0');
+      }
+      const updated = this.auth.updateDisplayName(val);
+      this.net.setLocalPlayer(updated);
+      this.bridge.broadcastLobbyState();
+      this.showToast(`✓ CALLSIGN SAVED: ${updated.displayName.toUpperCase()}!`);
+    };
+
+    document.getElementById('ttwt-profile-name-save-btn')?.addEventListener('click', saveProfileName);
+    const profileNameInput = document.getElementById('ttwt-profile-name-input') as HTMLInputElement | null;
+    profileNameInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') saveProfileName();
+    });
+
+    document.getElementById('ttwt-profile-name-dice-btn')?.addEventListener('click', () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit1');
+      }
+      const updated = this.auth.randomizeIdentity();
+      this.net.setLocalPlayer(updated);
+      this.bridge.broadcastLobbyState();
+      this.showToast(`🎲 NEW CALLSIGN: ${updated.displayName.toUpperCase()}!`);
+    });
+
+    // ✎ Roster slot quick rename button -> opens modal and focuses name field
+    document.getElementById('ttwt-roster-rename-btn')?.addEventListener('click', () => {
+      if (typeof window.playSound === 'function') {
+        window.playSound('hit1');
+      }
+      this.openModal();
+      setTimeout(() => {
+        const input = document.getElementById('ttwt-profile-name-input') as HTMLInputElement | null;
+        input?.focus();
+        input?.select();
+      }, 100);
     });
 
     // 👤 Profile Button inside Pre-Game Lobby

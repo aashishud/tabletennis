@@ -2226,3 +2226,133 @@ body:has(#vhp-mount-root) .ttwt-pregame-backdrop {
     box-shadow: 4px 4px 0px #000, 0 0 25px rgba(0, 240, 255, 0.8);
   }
 }
+
+/* ✎ Among Us Style Arcade Callsign Editor & Quick Rename */
+.ttwt-roster-slot-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ttwt-roster-rename-btn {
+  background: #341d5e;
+  border: 1.5px solid var(--pp-cyan);
+  border-radius: 4px;
+  color: var(--pp-cyan);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 2px 5px;
+  cursor: pointer;
+  box-shadow: 1px 1px 0px #000;
+  transition: transform 0.1s ease, background 0.1s ease;
+  user-select: none;
+}
+
+.ttwt-roster-rename-btn:hover {
+  background: var(--pp-cyan);
+  color: #000;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0px #000;
+}
+
+.ttwt-roster-rename-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0px 0px 0px #000;
+}
+
+.ttwt-name-edit-box {
+  margin-top: 10px;
+  background: #140b28;
+  border: 2px solid #331d59;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: inset 2px 2px 0px rgba(0, 0, 0, 0.4);
+}
+
+.ttwt-name-edit-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ttwt-name-edit-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--pp-yellow);
+  letter-spacing: 0.05em;
+}
+
+.ttwt-name-edit-hint {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--pp-text-muted);
+}
+
+.ttwt-name-edit-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ttwt-profile-name-input {
+  flex: 1;
+  min-width: 0;
+  background: #090414;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: var(--pp-yellow);
+  outline: none;
+  box-shadow: inset 2px 2px 0px #000;
+  letter-spacing: 0.05em;
+}
+
+.ttwt-profile-name-input:focus {
+  border-color: var(--pp-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.4), inset 2px 2px 0px #000;
+}
+
+.ttwt-name-save-btn {
+  padding: 8px 14px;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.ttwt-name-dice-btn {
+  background: #ff007f;
+  color: #fff;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0px #000;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 8px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+}
+
+.ttwt-name-dice-btn:hover {
+  background: #ff3399;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px #000;
+}
+
+.ttwt-name-dice-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #000;
+}
+
+.ttwt-name-live-note {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a78bfa;
+  line-height: 1.4;
+}

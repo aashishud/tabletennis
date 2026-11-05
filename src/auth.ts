@@ -9,9 +9,53 @@ export interface PlayerIdentity {
 
 const SESSION_PLAYER_KEY = 'ttwt_session_player';
 const LOCAL_DISCORD_PLAYER_KEY = 'ttwt_discord_player';
+const LOCAL_GUEST_PLAYER_KEY = 'ttwt_guest_player';
 const DISCORD_CLIENT_ID_KEY = 'ttwt_discord_client_id';
 const PENDING_ROOM_KEY = 'ttwt_pending_room';
 export const DEFAULT_DISCORD_CLIENT_ID = '1565375742743805992';
+
+const ARCADE_ADJECTIVES = [
+  'Neon', 'Cyber', 'Retro', 'Turbo', 'Shadow', 'Ghost', 'Hyper', 'Blitz',
+  'Pixel', 'Sonic', 'Viper', 'Nova', 'Cosmic', 'Laser', 'Thunder', 'Apex',
+  'Acro', 'Pulse', 'Flash', 'Zenith', 'Echo', 'Vortex', 'Phantom', 'Nitro'
+];
+
+const ARCADE_NOUNS = [
+  'Striker', 'Phantom', 'Paddle', 'Smash', 'Spin', 'Viper', 'Ace', 'King',
+  'Brawler', 'Champ', 'Lobber', 'Wizard', 'Server', 'Ghost', 'Racer', 'Sniper',
+  'Titan', 'Blade', 'Hero', 'Spark'
+];
+
+const ARCADE_PALETTES = [
+  ['#5865F2', '#1e1f22', '#00f2fe'],
+  ['#eb459e', '#2b2d31', '#ff477e'],
+  ['#23a55a', '#111214', '#57f287'],
+  ['#f59e0b', '#18181b', '#fbbf24'],
+  ['#8b5cf6', '#1e1b4b', '#c084fc'],
+  ['#06b6d4', '#083344', '#38bdf8'],
+  ['#ef4444', '#450a0a', '#f87171'],
+  ['#e11d48', '#1c1917', '#fda4af'],
+];
+
+export function generateRandomArcadeIdentity(): PlayerIdentity {
+  const adj = ARCADE_ADJECTIVES[Math.floor(Math.random() * ARCADE_ADJECTIVES.length)];
+  const noun = ARCADE_NOUNS[Math.floor(Math.random() * ARCADE_NOUNS.length)];
+  const num = Math.floor(Math.random() * 89 + 10);
+  const displayName = `${adj}${noun}#${num}`;
+  const username = displayName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const initials = `${adj[0]}${noun[0]}`.toUpperCase();
+  const [c1, c2, c3] = ARCADE_PALETTES[Math.floor(Math.random() * ARCADE_PALETTES.length)];
+  const id = `guest-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+  return {
+    id,
+    username,
+    displayName,
+    avatarUrl: createSvgAvatarDataUri(initials, c1, c2, c3),
+    authProvider: 'mock',
+    accentColor: c1,
+  };
+}
 
 /**
  * Generates a crisp high-res SVG data URI avatar for Mock Profiles
@@ -119,15 +163,56 @@ export class DiscordAuthManager {
       }
     }
 
-    // If URL has ?room=..., default a fresh joining tab to Player 2 for instant 2-tab testing
-    if (params.has('room')) {
-      this.saveSessionIdentity(MOCK_PROFILES.player2);
-      return MOCK_PROFILES.player2;
+    // Check persisted Guest Player identity
+    const guestRaw = localStorage.getItem(LOCAL_GUEST_PLAYER_KEY);
+    if (guestRaw) {
+      try {
+        const parsed = JSON.parse(guestRaw) as PlayerIdentity;
+        this.saveSessionIdentity(parsed);
+        return parsed;
+      } catch {
+        // ignore malformed JSON
+      }
     }
 
-    // Default to Dev Login: Sour
-    this.saveSessionIdentity(MOCK_PROFILES.sour);
-    return MOCK_PROFILES.sour;
+    // First visit: Roll a fresh Among Us style arcade callsign!
+    const newGuest = generateRandomArcadeIdentity();
+    localStorage.setItem(LOCAL_GUEST_PLAYER_KEY, JSON.stringify(newGuest));
+    this.saveSessionIdentity(newGuest);
+    return newGuest;
+  }
+
+  public updateDisplayName(newName: string): PlayerIdentity {
+    const clean = newName.trim().slice(0, 16);
+    if (!clean) return this.currentUser;
+
+    this.currentUser.displayName = clean;
+    this.currentUser.username = clean.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+    // If using mock/guest avatar, regenerate initials badge
+    if (this.currentUser.authProvider === 'mock') {
+      const parts = clean.split(/[\s+#_-]+/);
+      const initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : clean.slice(0, 2).toUpperCase();
+      this.currentUser.avatarUrl = createSvgAvatarDataUri(initials, this.currentUser.accentColor || '#5865F2', '#18181b', '#00f2fe');
+      this.preloadAvatar(this.currentUser.avatarUrl);
+      localStorage.setItem(LOCAL_GUEST_PLAYER_KEY, JSON.stringify(this.currentUser));
+    } else {
+      localStorage.setItem(LOCAL_DISCORD_PLAYER_KEY, JSON.stringify(this.currentUser));
+    }
+
+    this.saveSessionIdentity(this.currentUser);
+    this.notify();
+    return this.currentUser;
+  }
+
+  public randomizeIdentity(): PlayerIdentity {
+    const newGuest = generateRandomArcadeIdentity();
+    this.currentUser = newGuest;
+    this.preloadAvatar(newGuest.avatarUrl);
+    localStorage.setItem(LOCAL_GUEST_PLAYER_KEY, JSON.stringify(newGuest));
+    this.saveSessionIdentity(newGuest);
+    this.notify();
+    return newGuest;
   }
 
   private saveSessionIdentity(user: PlayerIdentity) {
