@@ -1,4 +1,5 @@
 import { BOT_PROFILE, type DiscordAuthManager, type PlayerIdentity } from './auth';
+import { createArenaRenderer, type ArenaRenderer } from './arenas';
 import type {
   BallHitPacket,
   BallMissPacket,
@@ -56,7 +57,7 @@ export const ARENA_MAPS: ArenaMapConfig[] = [
     previewTableHex: '#0284c7',
     previewWallHex: '#b47b44',
     atmosphereTint: 'rgba(0, 140, 255, 0.04)',
-    accentHex: '#00f0ff',
+    accentHex: '#38bdf8',
   },
   {
     id: 'cyber',
@@ -102,6 +103,50 @@ export const ARENA_MAPS: ArenaMapConfig[] = [
     atmosphereTint: 'rgba(255, 0, 127, 0.14)',
     accentHex: '#00f0ff',
   },
+  {
+    id: 'starship',
+    name: 'STARSHIP BRIDGE',
+    subtitle: 'OBSERVATION DECK • DEEP SPACE',
+    wallId: 1,
+    tableId: 1,
+    previewTableHex: '#0b2357',
+    previewWallHex: '#070b26',
+    atmosphereTint: 'rgba(0, 200, 255, 0.08)',
+    accentHex: '#00f0ff',
+  },
+  {
+    id: 'galleon',
+    name: 'PIRATE GALLEON',
+    subtitle: 'STORMY HIGH SEAS • OAK DECK',
+    wallId: 3,
+    tableId: 3,
+    previewTableHex: '#3b1c0a',
+    previewWallHex: '#1e1b36',
+    atmosphereTint: 'rgba(255, 180, 80, 0.06)',
+    accentHex: '#e5b84c',
+  },
+  {
+    id: 'volcano',
+    name: 'MAGMA FOUNDRY',
+    subtitle: 'MOLTEN CALDERA • BASALT CORE',
+    wallId: 4,
+    tableId: 2,
+    previewTableHex: '#261b1c',
+    previewWallHex: '#280c07',
+    atmosphereTint: 'rgba(255, 70, 0, 0.12)',
+    accentHex: '#ff4400',
+  },
+  {
+    id: 'cybercity',
+    name: 'NEO TOKYO',
+    subtitle: 'CYBER SKYLINE • SAKURA MIST',
+    wallId: 1,
+    tableId: 1,
+    previewTableHex: '#220e3d',
+    previewWallHex: '#120726',
+    atmosphereTint: 'rgba(255, 0, 140, 0.10)',
+    accentHex: '#ff007f',
+  },
 ];
 
 export interface PaddleColorOption {
@@ -142,6 +187,7 @@ export class MultiplayerBridge {
   public selectedMapId: string = 'classic';
   public localPaddleColor: string = '#ef4444';
   public remotePaddleColor: string = '#00f0ff';
+  public arenaRenderer: ArenaRenderer = createArenaRenderer();
 
   private auth: DiscordAuthManager;
   private net: WebRTCRoomManager;
@@ -177,12 +223,18 @@ export class MultiplayerBridge {
       this.net.setLocalPlayer(user);
     });
 
+    let announcedPeerRoomCode: string | null = null;
+    let announcedConnectedRoomCode: string | null = null;
+
     this.net.onRemotePlayerChange((remote) => {
       if (remote?.avatarUrl) {
         this.auth.preloadAvatar(remote.avatarUrl);
       }
-      if (remote) {
+      if (remote && this.net.roomCode && announcedPeerRoomCode !== this.net.roomCode) {
+        announcedPeerRoomCode = this.net.roomCode;
         this.broadcastLobbyState();
+      } else if (!remote) {
+        announcedPeerRoomCode = null;
       }
       this.notifyLobbyListeners();
     });
@@ -191,8 +243,13 @@ export class MultiplayerBridge {
     this.net.onStatusChange((status) => {
       if (status === 'connected') {
         this.setMode(this.isCoOpSameSide() ? 'BOT_MODE' : 'NETWORK_MODE');
-        this.broadcastLobbyState();
+        if (this.net.roomCode && announcedConnectedRoomCode !== this.net.roomCode) {
+          announcedConnectedRoomCode = this.net.roomCode;
+          this.broadcastLobbyState();
+        }
       } else if (status === 'disconnected' || status === 'error') {
+        announcedPeerRoomCode = null;
+        announcedConnectedRoomCode = null;
         this.setMode('BOT_MODE');
         this.peerPaused = false;
       }
@@ -321,6 +378,14 @@ export class MultiplayerBridge {
     const canvas = window.canvas;
     if (!canvas) return;
     const mapCfg = this.getSelectedMap();
+
+    if (this.arenaRenderer.has(mapCfg.id)) {
+      const tableTop = (window as any).tableTop;
+      const offsetY = tableTop?.offsetY ?? 0;
+      this.arenaRenderer.renderBackground(ctx, mapCfg.id, canvas.width, canvas.height, offsetY);
+      return;
+    }
+
     if (mapCfg.atmosphereTint) {
       ctx.save();
       ctx.fillStyle = mapCfg.atmosphereTint;
@@ -358,6 +423,113 @@ export class MultiplayerBridge {
           const cCtx = c.getContext('2d');
 
           if (cCtx) {
+            const table0Rect = atlas[oImageIds.table0];
+            const tableH = table0Rect ? table0Rect.height : 220;
+
+            const drawTable = () => {
+              // 3. 3D Floor Drop Shadow
+              if (shadowData?.img?.complete && shadowData.img.naturalWidth > 0) {
+                const sImg = shadowData.img;
+                cCtx.drawImage(
+                  sImg,
+                  0,
+                  0,
+                  sImg.width,
+                  sImg.height,
+                  w / 2 - sImg.width / 2,
+                  baseY + tableH - 80,
+                  sImg.width,
+                  sImg.height
+                );
+              }
+
+              // 4. Table Legs
+              const legsRect = atlas[oImageIds.tableLegs];
+              if (legsRect) {
+                cCtx.drawImage(
+                  img,
+                  legsRect.x,
+                  legsRect.y,
+                  legsRect.width,
+                  legsRect.height,
+                  w / 2 - legsRect.width / 2,
+                  baseY + tableH + 25,
+                  legsRect.width,
+                  legsRect.height
+                );
+              }
+
+              // 5. 3D Regulation Table Surface
+              const tblRect = atlas[oImageIds[`table${mapCfg.tableId}`]] || table0Rect;
+              if (tblRect) {
+                cCtx.drawImage(
+                  img,
+                  tblRect.x,
+                  tblRect.y,
+                  tblRect.width,
+                  tblRect.height,
+                  w / 2 - tblRect.width / 2,
+                  baseY,
+                  tblRect.width,
+                  tblRect.height
+                );
+              }
+
+              // 6. Table Front Apron Edge
+              const edgeRect = atlas[oImageIds.tableEdge];
+              if (edgeRect) {
+                cCtx.drawImage(
+                  img,
+                  edgeRect.x,
+                  edgeRect.y,
+                  edgeRect.width,
+                  edgeRect.height,
+                  w / 2 - edgeRect.width / 2,
+                  baseY + tableH,
+                  edgeRect.width,
+                  edgeRect.height
+                );
+              }
+
+              // 7. Net Brackets & Mesh Net
+              const netRect = atlas[oImageIds.net];
+              const clipRect = atlas[oImageIds.tableClip];
+              if (netRect) {
+                const netY = baseY - netRect.height + tableH * 0.282;
+                if (clipRect) {
+                  cCtx.drawImage(
+                    img,
+                    clipRect.x,
+                    clipRect.y,
+                    clipRect.width,
+                    clipRect.height,
+                    w / 2 - clipRect.width / 2,
+                    netY + netRect.height - 3,
+                    clipRect.width,
+                    clipRect.height
+                  );
+                }
+                cCtx.drawImage(
+                  img,
+                  netRect.x,
+                  netRect.y,
+                  netRect.width,
+                  netRect.height,
+                  w / 2 - netRect.width / 2,
+                  netY,
+                  netRect.width,
+                  netRect.height
+                );
+              }
+            };
+
+            if (this.arenaRenderer.has(mapId)) {
+              this.arenaRenderer.renderSnapshot(cCtx, mapId, w, h, baseY, drawTable);
+              const dataUrl = c.toDataURL('image/jpeg', 0.9);
+              this.mapSnapshotCache.set(mapId, dataUrl);
+              return dataUrl;
+            }
+
             cCtx.fillStyle = '#080512';
             cCtx.fillRect(0, 0, w, h);
 
@@ -394,103 +566,7 @@ export class MultiplayerBridge {
               );
             }
 
-            const table0Rect = atlas[oImageIds.table0];
-            const tableH = table0Rect ? table0Rect.height : 220;
-
-            // 3. 3D Floor Drop Shadow
-            if (shadowData?.img?.complete && shadowData.img.naturalWidth > 0) {
-              const sImg = shadowData.img;
-              cCtx.drawImage(
-                sImg,
-                0,
-                0,
-                sImg.width,
-                sImg.height,
-                w / 2 - sImg.width / 2,
-                baseY + tableH - 80,
-                sImg.width,
-                sImg.height
-              );
-            }
-
-            // 4. Table Legs
-            const legsRect = atlas[oImageIds.tableLegs];
-            if (legsRect) {
-              cCtx.drawImage(
-                img,
-                legsRect.x,
-                legsRect.y,
-                legsRect.width,
-                legsRect.height,
-                w / 2 - legsRect.width / 2,
-                baseY + tableH + 25,
-                legsRect.width,
-                legsRect.height
-              );
-            }
-
-            // 5. 3D Regulation Table Surface (table0..3)
-            const tblRect = atlas[oImageIds[`table${mapCfg.tableId}`]] || table0Rect;
-            if (tblRect) {
-              cCtx.drawImage(
-                img,
-                tblRect.x,
-                tblRect.y,
-                tblRect.width,
-                tblRect.height,
-                w / 2 - tblRect.width / 2,
-                baseY,
-                tblRect.width,
-                tblRect.height
-              );
-            }
-
-            // 6. Table Front Apron Edge
-            const edgeRect = atlas[oImageIds.tableEdge];
-            if (edgeRect) {
-              cCtx.drawImage(
-                img,
-                edgeRect.x,
-                edgeRect.y,
-                edgeRect.width,
-                edgeRect.height,
-                w / 2 - edgeRect.width / 2,
-                baseY + tableH,
-                edgeRect.width,
-                edgeRect.height
-              );
-            }
-
-            // 7. Net Brackets & Mesh Net
-            const netRect = atlas[oImageIds.net];
-            const clipRect = atlas[oImageIds.tableClip];
-            if (netRect) {
-              const netY = baseY - netRect.height + tableH * 0.282;
-              if (clipRect) {
-                cCtx.drawImage(
-                  img,
-                  clipRect.x,
-                  clipRect.y,
-                  clipRect.width,
-                  clipRect.height,
-                  w / 2 - clipRect.width / 2,
-                  netY + netRect.height - 3,
-                  clipRect.width,
-                  clipRect.height
-                );
-              }
-              cCtx.drawImage(
-                img,
-                netRect.x,
-                netRect.y,
-                netRect.width,
-                netRect.height,
-                w / 2 - netRect.width / 2,
-                netY,
-                netRect.width,
-                netRect.height
-              );
-            }
+            drawTable();
 
             // 8. Map Atmospheric Tint & Brawler Arena Vignette
             if (mapCfg.atmosphereTint) {
@@ -498,7 +574,14 @@ export class MultiplayerBridge {
               cCtx.fillRect(0, 0, w, h);
             }
 
-            const vig = cCtx.createRadialGradient(w / 2, h * 0.5, h * 0.2, w / 2, h * 0.5, w * 0.65);
+            const vig = cCtx.createRadialGradient(
+              w / 2,
+              h * 0.5,
+              h * 0.2,
+              w / 2,
+              h * 0.5,
+              w * 0.65
+            );
             vig.addColorStop(0, 'rgba(0,0,0,0)');
             vig.addColorStop(1, 'rgba(6, 4, 16, 0.55)');
             cCtx.fillStyle = vig;
@@ -803,6 +886,11 @@ export class MultiplayerBridge {
    */
   public onFrameTick() {
     this.updateExtraPaddles();
+
+    const ctx = window.ctx;
+    if (ctx && this.arenaRenderer.has(this.selectedMapId)) {
+      this.arenaRenderer.renderForeground(ctx, this.selectedMapId);
+    }
 
     const coOp = this.isCoOpSameSide();
     if (this.net.status === 'connected') {
@@ -1226,22 +1314,35 @@ export class MultiplayerBridge {
       if (packet.playerInfo) {
         this.net.setRemotePlayer(packet.playerInfo);
       }
+      let changed = false;
       if (packet.gameMode && (this.net.role === 'guest' || packet.senderRole === 'host')) {
-        this.gameMode = packet.gameMode;
+        if (this.gameMode !== packet.gameMode) {
+          this.gameMode = packet.gameMode;
+          changed = true;
+        }
       }
-      if (packet.guestSide) {
+      if (packet.guestSide && this.guestSide !== packet.guestSide) {
         this.guestSide = packet.guestSide;
+        changed = true;
       }
       if (packet.mapId && ARENA_MAPS.some((m) => m.id === packet.mapId)) {
         if (this.net.role === 'guest' || packet.senderRole === 'host') {
-          this.selectedMapId = packet.mapId;
-          this.applyMapToActiveGame();
+          if (this.selectedMapId !== packet.mapId) {
+            this.selectedMapId = packet.mapId;
+            this.applyMapToActiveGame();
+            changed = true;
+          }
         }
       }
       if (packet.paddleColor && PADDLE_COLORS.some((c) => c.hex === packet.paddleColor)) {
-        this.remotePaddleColor = packet.paddleColor;
+        if (this.remotePaddleColor !== packet.paddleColor) {
+          this.remotePaddleColor = packet.paddleColor;
+          changed = true;
+        }
       }
-      this.notifyLobbyListeners();
+      if (changed) {
+        this.notifyLobbyListeners();
+      }
       return;
     }
 

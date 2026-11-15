@@ -127,6 +127,7 @@ export class LobbyOverlayUI {
    */
   public leaveLobby() {
     const hadRoom = Boolean(this.net.roomCode);
+    this.setTrackedHostedRoom(null);
     this.net.disconnect();
     this.syncUrlWithRoom();
     this.inPreGameLobby = false;
@@ -161,6 +162,34 @@ export class LobbyOverlayUI {
     this.openPreGameLobby();
   }
 
+  private static readonly HOSTED_ROOM_SESSION_KEY = 'ttwt_hosted_room';
+
+  private getTrackedHostedRoom(): string | null {
+    try {
+      return sessionStorage.getItem(LobbyOverlayUI.HOSTED_ROOM_SESSION_KEY)?.toUpperCase().trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private setTrackedHostedRoom(code: string | null) {
+    try {
+      if (code) {
+        sessionStorage.setItem(LobbyOverlayUI.HOSTED_ROOM_SESSION_KEY, code.toUpperCase().trim());
+      } else {
+        sessionStorage.removeItem(LobbyOverlayUI.HOSTED_ROOM_SESSION_KEY);
+      }
+    } catch {
+      // Ignore storage access failures in restricted contexts
+    }
+  }
+
+  private async createAndTrackRoom(customCode?: string, mode?: GameMode): Promise<string> {
+    const code = await this.net.createRoom(customCode, mode);
+    this.setTrackedHostedRoom(code);
+    return code;
+  }
+
   public async openPreGameLobbyForMode(mode: GameMode) {
     this.bridge.setGameMode(mode);
     this.openPreGameLobby();
@@ -171,14 +200,15 @@ export class LobbyOverlayUI {
     if (urlRoom && !this.net.roomCode) {
       const res = await this.net.joinRoom(urlRoom);
       if (!res.ok) {
-        const code = await this.net.createRoom(undefined, mode);
+        await this.createAndTrackRoom(undefined, mode);
         this.syncUrlWithRoom();
       } else {
+        this.setTrackedHostedRoom(null);
         this.syncUrlWithRoom();
       }
       this.render();
     } else if (!this.net.roomCode) {
-      const code = await this.net.createRoom(undefined, mode);
+      await this.createAndTrackRoom(undefined, mode);
       this.syncUrlWithRoom();
       this.render();
     } else {
@@ -226,7 +256,8 @@ export class LobbyOverlayUI {
       this.bridge.setGameMode(check.gameMode);
     }
 
-    // Success! Update URL and transition into the pregame lobby
+    // Success! Clear any prior hosted-room marker, update URL and transition into the pregame lobby
+    this.setTrackedHostedRoom(null);
     this.syncUrlWithRoom();
     this.openPreGameLobby();
     this.showToast(`✓ JOINED ROOM ${code}!`);
@@ -265,10 +296,11 @@ export class LobbyOverlayUI {
       return;
     }
 
-    // If local user is the host returning to their own room:
+    // Only auto-resume as host if THIS browser tab originally created the room
     const currentUser = this.auth.getUser();
-    if (currentUser && (check.hostPlayer as any)?.id === currentUser.id) {
-      await this.net.createRoom(code, check.gameMode);
+    const isTabHost = this.getTrackedHostedRoom() === code;
+    if (isTabHost && currentUser && (check.hostPlayer as any)?.id === currentUser.id) {
+      await this.createAndTrackRoom(code, check.gameMode);
       if (check.gameMode) this.bridge.setGameMode(check.gameMode);
       this.syncUrlWithRoom();
       this.openPreGameLobby();
@@ -1152,22 +1184,7 @@ export class LobbyOverlayUI {
           window.playSound('hit0');
         }
 
-        this.bridge.setGameMode(mode);
-        this.openPreGameLobby();
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlRoom = urlParams.get('room')?.toUpperCase().trim();
-
-        if (urlRoom && !this.net.roomCode) {
-          await this.net.joinRoom(urlRoom);
-          this.syncUrlWithRoom();
-        } else if (!this.net.roomCode) {
-          const code = await this.net.createRoom(undefined, mode);
-          this.syncUrlWithRoom();
-          this.render();
-        } else {
-          this.syncUrlWithRoom();
-        }
+        await this.openPreGameLobbyForMode(mode);
       });
     });
 
@@ -1255,6 +1272,7 @@ export class LobbyOverlayUI {
         return;
       }
 
+      this.setTrackedHostedRoom(null);
       if (check.gameMode) {
         this.bridge.setGameMode(check.gameMode);
       }

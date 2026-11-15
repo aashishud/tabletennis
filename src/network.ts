@@ -113,6 +113,7 @@ export class WebRTCRoomManager {
   public remotePlayer: PlayerIdentity | null = null;
   public rttMs: number = 0;
 
+  private lastStatusDetail: string | undefined = undefined;
   private localPlayer: PlayerIdentity;
   private peerConnection: RTCPeerConnection | null = null;
   private fastChannel: RTCDataChannel | null = null;
@@ -166,14 +167,30 @@ export class WebRTCRoomManager {
     this.peerListeners.push(cb);
   }
 
+  private isSamePlayer(a: PlayerIdentity | null, b: PlayerIdentity | null): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return (
+      a.id === b.id &&
+      a.displayName === b.displayName &&
+      a.username === b.username &&
+      a.avatarUrl === b.avatarUrl &&
+      a.accentColor === b.accentColor &&
+      a.authProvider === b.authProvider
+    );
+  }
+
   private setStatus(status: ConnectionStatus, detail?: string) {
+    if (this.status === status && this.lastStatusDetail === detail) return;
     this.status = status;
+    this.lastStatusDetail = detail;
     for (const cb of this.statusListeners) {
       cb(status, detail);
     }
   }
 
   public setRemotePlayer(peer: PlayerIdentity | null) {
+    if (this.isSamePlayer(this.remotePlayer, peer)) return;
     this.remotePlayer = peer;
     for (const cb of this.peerListeners) {
       cb(peer);

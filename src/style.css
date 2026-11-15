@@ -1433,14 +1433,35 @@ body:has(#vhp-mount-root) .ttwt-pregame-backdrop {
   transform: skewX(10deg);
 }
 
-/* 5 Slanted HD Stage Thumbnail Strip */
+/* 9 Slanted HD Stage Thumbnail Strip (Horizontal Scroll) */
 .ttwt-map-cards-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 6px 12px 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pp-cyan) rgba(20, 10, 40, 0.6);
+  -webkit-overflow-scrolling: touch;
+}
+
+.ttwt-map-cards-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.ttwt-map-cards-row::-webkit-scrollbar-track {
+  background: rgba(12, 6, 26, 0.85);
+  border-radius: 4px;
+}
+
+.ttwt-map-cards-row::-webkit-scrollbar-thumb {
+  background: var(--pp-cyan);
+  border-radius: 4px;
 }
 
 .ttwt-map-option-card {
+  flex: 0 0 118px;
+  width: 118px;
   --tile-accent: var(--pp-cyan);
   background: transparent;
   border: none;
@@ -1632,7 +1653,7 @@ body:has(#vhp-mount-root) .ttwt-pregame-backdrop {
   font-size: 9px;
   text-align: center;
   line-height: 1.4;
-  z-index: 100000;
+  z-index: 2500000;
   pointer-events: none;
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
@@ -2014,7 +2035,11 @@ body:has(#vhp-mount-root) .ttwt-pregame-backdrop {
     display: none;
   }
   .ttwt-map-cards-row {
-    grid-template-columns: repeat(2, 1fr);
+    padding: 2px 2px 8px 2px;
+  }
+  .ttwt-map-option-card {
+    flex: 0 0 105px;
+    width: 105px;
   }
   .ttwt-paddle-colors-row {
     grid-template-columns: repeat(4, 1fr);

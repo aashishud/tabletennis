@@ -318,6 +318,13 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         return;
       }
 
+      // Reset stale handshake artifacts so joining guest starts clean
+      room.cachedOffer = undefined;
+      room.cachedAnswer = undefined;
+      room.cachedHostCandidates = [];
+      room.cachedGuestCandidates = [];
+      room.messagesForGuest = [];
+
       room.guestPlayer = body.playerInfo;
       room.guestLastSeen = now;
       room.guestJoinedAt = now;
@@ -404,12 +411,17 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         };
         if (from === 'host') {
           room.hostPlayer = undefined;
+          room.cachedOffer = undefined;
+          room.cachedHostCandidates = [];
           room.messagesForGuest.push(leaveEnv);
         } else {
           room.guestPlayer = undefined;
           room.peerJoinedNotified = false;
+          room.cachedOffer = undefined;
           room.cachedAnswer = undefined;
+          room.cachedHostCandidates = [];
           room.cachedGuestCandidates = [];
+          room.messagesForGuest = [];
           room.messagesForHost.push(leaveEnv);
         }
         await saveRoom(room);
